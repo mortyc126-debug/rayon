@@ -20,7 +20,7 @@
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
 html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
-#app{display:flex;flex-direction:column;height:100vh;height:100dvh;background:var(--bg);color:var(--text2);font-family:'Oswald',sans-serif;}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;background:transparent;color:var(--text2);font-family:'Oswald',sans-serif;}
 
 /* BACKGROUND */
 #bg{position:fixed;inset:0;z-index:0;pointer-events:none;transition:background .9s ease;}
@@ -237,6 +237,26 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
 .tb-club{background:rgba(155,89,182,.12);color:var(--purple-b);}
 .tb-special{background:rgba(241,196,15,.15);color:#f1c40f;border:1px solid rgba(241,196,15,.3);}
 .tb-hq{background:rgba(26,188,156,.15);color:var(--teal-b);border:1px solid rgba(26,188,156,.3);}
+/* Commander */
+.cmd-card{background:var(--card);border:1px solid var(--gold-d);border-left:3px solid var(--gold-b);border-radius:3px;padding:9px 11px;margin-bottom:6px;cursor:pointer;transition:border-color .2s;}
+.cmd-card:active{border-color:#fff;}.cmd-card.active-cmd{border-left-color:var(--teal-b);border-color:var(--teal-b);}
+.cmd-icon{font-size:22px;line-height:1;}.cmd-name{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;color:#fff;}
+.cmd-title{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:1px;margin:2px 0;}
+.cmd-bonus{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--gold-b);}
+.cmd-cost{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);margin-top:2px;}
+.cmd-locked{opacity:.38;pointer-events:none;}
+/* Alliance */
+.al-member{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:3px;margin-bottom:3px;}
+.al-rank{font-family:'Bebas Neue',sans-serif;font-size:13px;width:26px;text-align:center;}
+.al-mname{flex:1;font-size:11px;}.al-mname.you{color:var(--green-b);}
+.al-mzones{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);}
+.al-tech{background:var(--card);border:1px solid var(--border);border-radius:3px;padding:8px 10px;margin-bottom:5px;}
+.al-tech-name{font-size:11px;margin-bottom:3px;}
+.al-tech-bar{height:3px;background:var(--border2);border-radius:2px;overflow:hidden;margin:3px 0;}
+.al-tech-fill{height:100%;background:var(--purple-b);transition:width .5s;}
+.al-tech-info{display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);}
+.al-bonus-item{padding:5px 8px;background:var(--card);border:1px solid var(--border2);border-left:3px solid var(--green-b);border-radius:0 3px 3px 0;margin-bottom:4px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--green-b);}
+.sect-lbl{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--purple-b);letter-spacing:2px;padding:8px 0 5px;border-top:1px solid var(--border);margin-top:5px;}
 </style>
 </head>
 <body>
@@ -281,7 +301,7 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
     </div>
     <div class="hstats">
       <div class="hs"><div class="hs-v c-g" id="h-gold">1200</div><div class="hs-l">бабки</div></div>
-      <div class="hs"><div class="hs-v" id="h-troops" style="color:var(--red-b)">180</div><div class="hs-l">братва</div></div>
+      <div class="hs"><div class="hs-v" id="h-troops" style="color:var(--red-b)">180</div><div class="hs-l" id="h-troops-lbl">братва</div></div>
       <div class="hs"><div class="hs-v c-gr" id="h-zones">0</div><div class="hs-l">кварт.</div></div>
       <div class="hs"><div class="hs-v c-w" id="h-income">+0</div><div class="hs-l">доход/ч</div></div>
     </div>
@@ -302,6 +322,7 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
       <div class="tab" data-tab="base">🏠 БАЗА</div>
       <div class="tab" data-tab="leaders">📊 ЛИДЕРЫ</div>
       <div class="tab" data-tab="events">📡 ЭФИР</div>
+      <div class="tab" data-tab="alliance">🤝 АЛЬЯНС</div>
     </div>
 
     <!-- ACTION TAB -->
@@ -354,7 +375,7 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
             <div class="ss-side">
               <div class="ss-side-lbl">Твои силы</div>
               <div class="ss-big c-gr" id="ss-atk">50</div>
-              <div class="ss-small">братвы</div>
+              <div class="ss-small" id="ss-atk-lbl">братвы</div>
             </div>
             <div class="vs-div">VS</div>
             <div class="ss-side">
@@ -381,32 +402,32 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
     <!-- BASE TAB -->
     <div id="tab-base" class="tc">
       <div class="hq-card" id="hq-card">
-        <div class="hq-title" id="hq-title">🏠 // МАЛИНА — БАЗА</div>
+        <div class="hq-title" id="hq-title">🏠 // ЛАРЁК — БАЗА</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--teal-b);margin-bottom:6px" id="hq-rank-name">Ларёк</div>
         <div class="hq-grid">
           <div class="hq-item"><div class="hq-v" id="hq-lv">1</div><div class="hq-l">Уровень</div></div>
-          <div class="hq-item"><div class="hq-v" id="hq-trp">10/ч</div><div class="hq-l">Братва</div></div>
+          <div class="hq-item"><div class="hq-v" id="hq-trp">10/ч</div><div class="hq-l" id="hq-trp-lbl">Братва</div></div>
           <div class="hq-item"><div class="hq-v" id="hq-gold">50/ч</div><div class="hq-l">Бабки</div></div>
         </div>
         <div style="margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)">Производство до след.уровня:</div>
-        <div class="hq-bar"><div class="hq-fill" id="hq-bar" style="width:30%"></div></div>
+        <div class="hq-bar"><div class="hq-fill" id="hq-bar" style="width:20%"></div></div>
         <button class="abtn b-hq" style="margin-top:10px;margin-bottom:0" onclick="upgradeHQ()" id="hq-upgrade-btn">⬆ ПРОКАЧАТЬ БАЗУ <span class="cost" id="hq-cost">-500 💰</span></button>
       </div>
 
       <!-- Faction special action -->
       <div class="special-card" id="special-card">
         <div class="special-title" id="special-title">⚡ НАЕЗД</div>
-        <div style="font-size:11px;color:var(--dim2);margin-bottom:6px;font-family:'Share Tech Mono',monospace;font-size:10px;" id="special-desc">Снижает доход вражеского квартала на 40% на 4 часа</div>
+        <div style="font-size:10px;color:var(--dim2);margin-bottom:6px;font-family:'Share Tech Mono',monospace;" id="special-desc">Снижает доход вражеского квартала на 40% на 4 часа</div>
         <button class="abtn" id="special-btn" onclick="doSpecial()">ПРИМЕНИТЬ <span class="cost" id="special-cost">—</span></button>
         <div class="special-cd" id="special-cd"></div>
       </div>
 
-      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);padding:8px 0;border-top:1px solid var(--border);margin-top:4px;">
-        ПРОГРЕССИЯ БАЗЫ<br><br>
-        Ур.1 → Братва 10/ч · Бабки 50/ч<br>
-        Ур.2 → Братва 18/ч · Бабки 90/ч<br>
-        Ур.3 → Братва 30/ч · Бабки 150/ч<br>
-        Ур.4 → Братва 45/ч · Бабки 220/ч<br>
-        Ур.5 → Братва 65/ч · Бабки 320/ч
+      <!-- Commander section -->
+      <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--gold-b);letter-spacing:2px;padding:8px 0 5px;border-top:1px solid var(--border);margin-top:4px;">⭐ // КОМАНДИР</div>
+      <div id="commander-section"></div>
+
+      <div id="hq-progression" style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);padding:8px 0;border-top:1px solid var(--border);margin-top:4px;line-height:1.9">
+        ПРОГРЕССИЯ БАЗЫ
       </div>
     </div>
 
@@ -414,6 +435,34 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
     <div id="tab-leaders" class="tc"><div id="lb-list"></div></div>
     <!-- EVENTS TAB -->
     <div id="tab-events" class="tc"><div id="ev-feed"></div></div>
+    <!-- ALLIANCE TAB -->
+    <div id="tab-alliance" class="tc">
+      <div id="al-none">
+        <div style="text-align:center;padding:16px 0 12px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--border2);letter-spacing:4px">АЛЬЯНС</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);margin:6px 0 18px;line-height:1.8">Объедини силы для захвата<br>особых точек и технологий</div>
+        </div>
+        <button class="abtn b-bribe" onclick="createAlliance()">🤝 СОЗДАТЬ АЛЬЯНС <span class="cost">-1000 💰</span></button>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);padding:10px 0 6px;border-top:1px solid var(--border);margin-top:4px">СУЩЕСТВУЮЩИЕ АЛЬЯНСЫ</div>
+        <div id="al-existing"></div>
+      </div>
+      <div id="al-info" style="display:none">
+        <div class="hq-card" style="border-color:var(--purple-b);border-left-color:var(--purple-b)">
+          <div class="hq-title" style="color:var(--purple-b)">🤝 // АЛЬЯНС: <span id="al-name-lbl">—</span></div>
+          <div class="hq-grid">
+            <div class="hq-item"><div class="hq-v" style="color:var(--purple-b)" id="al-level-lbl">1</div><div class="hq-l">Уровень</div></div>
+            <div class="hq-item"><div class="hq-v" style="color:var(--purple-b)" id="al-members-lbl">1</div><div class="hq-l">Участников</div></div>
+            <div class="hq-item"><div class="hq-v" style="color:var(--purple-b)" id="al-tp-lbl">0</div><div class="hq-l">Очки АЛ</div></div>
+          </div>
+        </div>
+        <div class="sect-lbl">ИЕРАРХИЯ</div>
+        <div id="al-members-list"></div>
+        <div class="sect-lbl" style="color:var(--gold-b)">ТЕХНОЛОГИИ</div>
+        <div id="al-tech-list"></div>
+        <div class="sect-lbl" style="color:var(--green-b)">АКТИВНЫЕ БОНУСЫ</div>
+        <div id="al-bonuses"></div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="toast"></div>
@@ -428,6 +477,8 @@ const FACTIONS = {
     ranks:['Чушпан','Пацан','Боец','Бригадир','Смотрящий','Авторитет','Вор в законе'],
     hqName:'Малина', xpFill:'linear-gradient(90deg,#5a1810,#e74c3c)',
     troopsBonus:1.2, defenseBonus:1.0, attackBonus:1.15,
+    troopsLabel:'братва', troopsLabelGen:'братвы',
+    hqRanks:['Ларёк','Шаурмечная','Малина','Ночной клуб','ТЦ'],
     specialName:'⚡ НАЕЗД', specialDesc:'Снижает доход квартала врага на 40% на 4ч',
     specialCost:'100 💰 + 20 братвы', specialCD:6*60,
     bg:'bg-bandits',
@@ -437,11 +488,36 @@ const FACTIONS = {
     ranks:['Патрульный','Участковый','Опер','Нач.отдела','Замначальника','Нач.РУВД','Генерал'],
     hqName:'Участок', xpFill:'linear-gradient(90deg,#0a2a42,#2d9dd6)',
     troopsBonus:1.0, defenseBonus:1.25, attackBonus:1.0,
+    troopsLabel:'сотрудники', troopsLabelGen:'сотрудников',
+    hqRanks:['КПП','Участок','Отдел полиции','РУВД','Главное управление'],
     specialName:'🔒 ОБЛАВА', specialDesc:'Снижает силу атаки противника на 30% при осаде твоего квартала',
     specialCost:'120 💰', specialCD:8*60,
     bg:'bg-cops',
   },
 };
+
+// Block counts per district based on Yekaterinburg population density
+const DIST_BLOCK_COUNT = {0:10, 1:7, 2:11, 3:9, 4:13, 5:15, 6:14};
+
+const COMMANDERS = {
+  bandits: [
+    {id:'vitok',  name:'Витёк',           title:'Гопник',   icon:'👊', cost:500,  atk:1.08, trp:1.00, desc:'Атака +8%',                   unlockLevel:1},
+    {id:'zhenek', name:'Женёк',           title:'Боец',     icon:'🔪', cost:1500, atk:1.15, trp:1.10, desc:'Атака +15% · Братва +10%',     unlockLevel:2},
+    {id:'tolyan', name:'Бригадир Толян',  title:'Бригадир', icon:'⚔',  cost:4000, atk:1.25, trp:1.20, desc:'Атака +25% · Братва +20%',     unlockLevel:4},
+  ],
+  cops: [
+    {id:'petrov',  name:'Петров',         title:'Рядовой',  icon:'👮', cost:500,  def:1.10, atk:1.00, desc:'Защита +10%',                  unlockLevel:1},
+    {id:'smirnov', name:'Смирнов',        title:'Опер',     icon:'🚔', cost:1500, def:1.20, atk:1.08, desc:'Защита +20% · Атака +8%',      unlockLevel:2},
+    {id:'kozlov',  name:'Майор Козлов',   title:'Нач.отдела',icon:'⭐',cost:4000, def:1.35, atk:1.15, desc:'Защита +35% · Атака +15%',     unlockLevel:4},
+  ],
+};
+
+const AL_TECHS = [
+  {id:'troops',  name:'Усиление войск', icon:'⚔',  levels:[{cost:100,bonus:'+10% войск'},{cost:250,bonus:'+20% войск'},{cost:500,bonus:'+35% войск'}]},
+  {id:'siege',   name:'Захват',         icon:'🏳',  levels:[{cost:150,bonus:'Осада −10%'},{cost:350,bonus:'Осада −20%'},{cost:700,bonus:'Осада −30%'}]},
+  {id:'defense', name:'Защита',         icon:'🛡',  levels:[{cost:120,bonus:'+8% защиты'},{cost:300,bonus:'+15% защиты'},{cost:600,bonus:'+25% защиты'}]},
+  {id:'intel',   name:'Разведка',       icon:'🔍',  levels:[{cost:80,bonus:'Разведка −25%'},{cost:200,bonus:'Разведка −50%'},{cost:400,bonus:'Разведка бесплатно'}]},
+];
 
 const HQ_LEVELS = [
   {troops:10, gold:50,  upgradeCost:500},
@@ -534,41 +610,51 @@ const G = {
   specialCooldown:0,
   nextEventAt: Date.now()+5*60*1000,
   nextEventType:'Горячая точка',
+  commander: null,
+  alliance: null,
+  allianceTechPoints: 0,
 };
 
 let DISTRICTS = [];
 
+// Generate ring positions for n blocks (no overlap)
+function genRings(n) {
+  const out = [];
+  const oN = Math.min(6, n);
+  const aStep = oN > 0 ? 360 / oN : 0;
+  for (let i = 0; i < oN; i++) out.push({a: i * aStep, r: 24});
+  const mN = Math.min(6, n - oN);
+  for (let i = 0; i < mN; i++) out.push({a: 30 + i * 60, r: 14});
+  const iN = Math.min(2, n - oN - mN);
+  for (let i = 0; i < iN; i++) out.push({a: i * 180, r: 8});
+  if (n - oN - mN - iN > 0) out.push({a: 0, r: 0});
+  return out;
+}
+
 function buildDistricts() {
+  // Player starts with ZERO zones — only base exists
   const initFaction = (distId, blockIdx) => {
     const templates = {
-      0:['mine','mine','neutral','e1','neutral','e2','neutral','e3','neutral','neutral','e1','neutral','e2','neutral','neutral'],
-      1:['mine','mine','neutral','neutral','e1','neutral','e2','e3','neutral','neutral','e1','neutral','neutral','e2','neutral'],
-      2:['neutral','e1','e1','e2','neutral','e3','neutral','e2','neutral','e1','neutral','e2','neutral','e3','neutral'],
-      3:['e2','e2','neutral','e1','neutral','neutral','e3','neutral','neutral','e2','e1','neutral','neutral','neutral','e3'],
-      4:['neutral','neutral','e3','neutral','e1','e2','neutral','neutral','e3','neutral','e1','neutral','e2','neutral','neutral'],
+      0:['neutral','neutral','neutral','e1','neutral','e2','neutral','e3','neutral','neutral'],
+      1:['neutral','neutral','e1','neutral','e2','neutral','neutral'],
+      2:['neutral','e1','e1','e2','neutral','e3','neutral','e2','neutral','e1','neutral'],
+      3:['e2','e2','neutral','e1','neutral','neutral','e3','neutral','neutral'],
+      4:['neutral','neutral','e3','neutral','e1','e2','neutral','neutral','e3','neutral','e1','neutral','e2'],
       5:['e1','neutral','neutral','e2','neutral','e3','neutral','neutral','e1','neutral','neutral','e2','neutral','e3','neutral'],
-      6:['e2','neutral','e1','neutral','e3','neutral','e2','neutral','neutral','e1','neutral','e2','neutral','e3','neutral'],
+      6:['e2','neutral','e1','neutral','e3','neutral','e2','neutral','neutral','e1','neutral','e2','neutral','e3'],
     };
     return (templates[distId]||[])[blockIdx]||'neutral';
   };
 
-  // 15 blocks in 3 rings: 6 outer, 6 middle, 2 inner + 1 center
-  const rings = [
-    // outer ring (6)
-    {a:0,r:22},{a:60,r:22},{a:120,r:22},{a:180,r:22},{a:240,r:22},{a:300,r:22},
-    // middle ring (6)
-    {a:30,r:13},{a:90,r:13},{a:150,r:13},{a:210,r:13},{a:270,r:13},{a:330,r:13},
-    // inner (2 + center)
-    {a:0,r:5},{a:180,r:5},{a:0,r:0},
-  ];
-
   return DIST_DEFS.map(def => {
-    const blocks = (BLOCK_NAMES[def.id]||[]).slice(0,15).map((name, i) => {
-      const ring = rings[i]||{a:0,r:0};
+    const n = DIST_BLOCK_COUNT[def.id] || 15;
+    const rings = genRings(n);
+    const blocks = (BLOCK_NAMES[def.id]||[]).slice(0, n).map((name, i) => {
+      const ring = rings[i]||{a:0, r:0};
       const ang = (ring.a * Math.PI)/180;
       const bx = def.cx + Math.cos(ang)*ring.r;
       const by = def.cy + Math.sin(ang)*ring.r;
-      const s = i < 6 ? 8.5 : (i < 12 ? 7.5 : 6.5);
+      const s = ring.r >= 20 ? 8 : ring.r >= 10 ? 7 : ring.r >= 5 ? 6.5 : 6;
       const pts = [[bx-s/2,by-s/2],[bx+s/2,by-s/2],[bx+s/2,by+s/2],[bx-s/2,by+s/2]];
       const btype = getBlockType(def.id, i);
       const btDef = BLOCK_TYPES[btype];
@@ -578,13 +664,13 @@ function buildDistricts() {
         faction, type:btype,
         defense: btDef.defense + Math.floor(Math.random()*30),
         level:1,
-        income: faction==='mine' ? btDef.income : 0,
+        income: 0,
         baseIncome: btDef.income,
         siege:null, intelExpiry:0,
-        nayezdUntil:0, // naezd effect active
+        nayezdUntil:0,
       };
     });
-    return {...def, blocks, level:1};
+    return {...def, blocks, level:1, blockCount: n};
   });
 }
 
@@ -618,6 +704,22 @@ function chooseFaction(fac) {
   sc.style.borderLeftColor = col;
   document.getElementById('special-title').style.color = col;
 
+  // Dynamic troop label
+  const tlbl = document.getElementById('h-troops-lbl');
+  if (tlbl) tlbl.textContent = fd.troopsLabel;
+
+  // HQ progression text
+  const progDiv = document.getElementById('hq-progression');
+  if (progDiv && fd.hqRanks) {
+    const tl = fd.troopsLabel;
+    progDiv.innerHTML = `ПРОГРЕССИЯ БАЗЫ<br><br>
+      Ур.1 <b>${fd.hqRanks[0]}</b> → ${tl} 10/ч · Бабки 50/ч<br>
+      Ур.2 <b>${fd.hqRanks[1]}</b> → ${tl} 18/ч · Бабки 90/ч<br>
+      Ур.3 <b>${fd.hqRanks[2]}</b> → ${tl} 30/ч · Бабки 150/ч<br>
+      Ур.4 <b>${fd.hqRanks[3]}</b> → ${tl} 45/ч · Бабки 220/ч<br>
+      Ур.5 <b>${fd.hqRanks[4]}</b> → ${tl} 65/ч · Бабки 320/ч`;
+  }
+
   document.getElementById('faction-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   setBg('bg-r');
@@ -626,6 +728,8 @@ function chooseFaction(fac) {
   updateStats();
   updateHQ();
   updateRankLabel();
+  renderCommanderSection();
+  renderAllianceTab();
   addEv('ev-inf',`Фракция выбрана: <span style="color:${fd.color}">${fd.name}</span>. Добро пожаловать.`);
   setTimeout(()=>addEv('ev-inf','<span class="hl-gold">Нажми на Екатеринбург</span> → выбери район → кварталы'),800);
 }
@@ -694,12 +798,12 @@ function renderCity(){
     const lbl=se('text',{x:d.cx,y:d.cy-5,class:`dlabel${dom==='mine'?' mine-l':dom!=='neutral'?' enemy-l':''}`});
     lbl.textContent=d.name.length>8?d.name.slice(0,7)+'…':d.name;
     const dots=se('text',{x:d.cx,y:d.cy+8,'font-size':'4.5','text-anchor':'middle','dominant-baseline':'middle','pointer-events':'none',fill:'rgba(40,201,106,.4)'});
-    dots.textContent='▣'.repeat(myB)+'□'.repeat(15-myB);
+    dots.textContent='▣'.repeat(myB)+'□'.repeat(d.blocks.length-myB);
     svg.appendChild(poly);svg.appendChild(lbl);svg.appendChild(dots);
   });
   document.getElementById('city-lbl').textContent='// ЕКАТЕРИНБУРГ';
   document.getElementById('map-label').textContent='// ВЫБЕРИ РАЙОН';
-  document.getElementById('view-hint').textContent='нажми на район → 15 кварталов';
+  document.getElementById('view-hint').textContent='нажми на район → кварталы';
   document.getElementById('back-btn').style.display='block';
 }
 
@@ -737,7 +841,7 @@ function renderDistrict(distId){
     svg.appendChild(poly);svg.appendChild(lbl);
   });
   document.getElementById('city-lbl').textContent=`// ${dist.name.toUpperCase()}`;
-  document.getElementById('map-label').textContent='// КВАРТАЛЫ (15)';
+  document.getElementById('map-label').textContent=`// КВАРТАЛЫ (${dist.blocks.length})`;
   document.getElementById('view-hint').textContent='нажми на квартал';
   document.getElementById('back-btn').style.display='block';
 }
@@ -768,15 +872,15 @@ function showDistInfo(distId){
   document.getElementById('t-lv').textContent=d.level;
   document.getElementById('t-def').textContent=d.blocks.reduce((s,b)=>s+b.defense,0);
   document.getElementById('t-inc').textContent='+'+d.blocks.filter(b=>b.faction==='mine').reduce((s,b)=>s+b.income,0);
-  document.getElementById('t-type-icon').textContent=mine+'/15';
+  document.getElementById('t-type-icon').textContent=`${mine}/${d.blocks.length}`;
   document.getElementById('t-type-badge').innerHTML='';
   const badge=document.getElementById('t-badge');
   badge.textContent=dom==='mine'?'✓ ТВОЙ':(FAC_LABELS[dom]||dom);
   badge.style.borderColor=FAC_COLORS[dom]||'#444';badge.style.color=FAC_COLORS[dom]||'#ccc';
   show('sd-wrap');
-  document.getElementById('sd-count').textContent=`${mine}/15`;
+  document.getElementById('sd-count').textContent=`${mine}/${d.blocks.length}`;
   const track=document.getElementById('sd-track');track.innerHTML='';
-  d.blocks.forEach(b=>{const s=document.createElement('div');s.className='sd-seg';s.style.background=FAC_COLORS[b.faction]||'var(--border2)';track.appendChild(s);});
+  d.blocks.forEach(b=>{const s=document.createElement('div');s.className='sd-seg';s.style.background=FAC_COLORS[b.faction]||'var(--border2)';s.style.width=`calc(${100/d.blocks.length}% - 1px)`;track.appendChild(s);});
   document.getElementById('act-btns').innerHTML='<div class="no-sel">нажми на квартал</div>';
 }
 
@@ -849,7 +953,7 @@ function renderActBtns(b){
       <button class="abtn ${(cd||b.level>=5)?'b-off':'b-cap'}" onclick="doLvlUp('${b.id}')">⬆ ПРОКАЧАТЬ${b.level<5?' →ур.'+(b.level+1):'(MAX)'} <span class="cost">${lc?'-'+lc+' 💰':'—'}</span></button>
     `;
   } else if(b.faction==='neutral'){
-    el.innerHTML=`<button class="abtn ${cd?'b-off':'b-cap'}" onclick="doCapture('${b.id}')">⚑ ЗАХВАТИТЬ${cdTxt} <span class="cost">-30 💰 · -15 братвы</span></button>`;
+    el.innerHTML=`<button class="abtn ${cd?'b-off':'b-cap'}" onclick="doCapture('${b.id}')">⚑ ЗАХВАТИТЬ${cdTxt} <span class="cost">-30 💰 · -15 ${trpLbl()}</span></button>`;
   } else {
     const hasIntel=Date.now()<b.intelExpiry;
     el.innerHTML=`
@@ -869,6 +973,7 @@ function openSS(bid){
   const b=getB(bid);if(!b)return;
   const hasIntel=Date.now()<b.intelExpiry;
   document.getElementById('siege-screen').style.display='block';
+  const atkLbl=document.getElementById('ss-atk-lbl'); if(atkLbl) atkLbl.textContent=trpLbl();
   document.getElementById('ss-def').textContent=hasIntel?b.defense:'~'+Math.round(b.defense/10)*10+'±';
   document.getElementById('ss-def-lbl').textContent=hasIntel?'точно':'~примерно';
   const sl=document.getElementById('ss-slider');
@@ -891,7 +996,7 @@ function updateSS(){
   document.getElementById('ss-chance').style.color=chance>60?'var(--green-b)':chance>40?'var(--gold-b)':'var(--red-b)';
   document.getElementById('chance-fill').style.clipPath=`inset(0 ${100-chance}% 0 0)`;
   const cost=Math.floor(troops*.7)+40;
-  document.getElementById('ss-cost').textContent=`-${troops} братвы · -${cost} 💰`;
+  document.getElementById('ss-cost').textContent=`-${troops} ${trpLbl()} · -${cost} 💰`;
 }
 function confirmSiege(){
   const b=getB(G.siegeTarget);if(!b){closeSS();return;}
@@ -950,7 +1055,7 @@ function beginSiege(bid,troops){
   const effTroops=Math.floor(troops*fd.attackBonus);
   const duration=Math.max(20,25+Math.floor(b.defense*.55));
   b.siege={endsAt:Date.now()+duration*1000,duration,attacker:'mine',troops:effTroops};
-  addEv('ev-atk',`⚔ Осада <b>${b.name}</b> — ${effTroops} братвы`);toast('ОСАДА НАЧАЛАСЬ','i');
+  addEv('ev-atk',`⚔ Осада <b>${b.name}</b> — ${effTroops} ${trpLbl()}`);toast('ОСАДА НАЧАЛАСЬ','i');
   renderDistrict(b.distId);if(G.selected?.blockId===bid)showBlockInfo(bid);
   const iv=setInterval(()=>{
     if(!b.siege){clearInterval(iv);return;}
@@ -1014,16 +1119,21 @@ function upgradeHQ(){
   updateStats();updateHQ();
 }
 function updateHQ(){
-  const lv=G.hqLevel;const hq=HQ_LEVELS[lv-1];
+  const lv=G.hqLevel; const hq=HQ_LEVELS[lv-1];
   const fd=FACTIONS[G.faction]||FACTIONS.bandits;
   const troopsRate=Math.floor(hq.troops*fd.troopsBonus);
+  const rankName = fd.hqRanks ? fd.hqRanks[lv-1] : fd.hqName;
   document.getElementById('hq-lv').textContent=lv;
   document.getElementById('hq-trp').textContent=troopsRate+'/ч';
   document.getElementById('hq-gold').textContent=hq.gold+'/ч';
   document.getElementById('hq-bar').style.width=(lv/5*100)+'%';
+  document.getElementById('hq-title').textContent=`🏠 // ${rankName.toUpperCase()} — БАЗА`;
+  const rnEl=document.getElementById('hq-rank-name'); if(rnEl) rnEl.textContent=rankName;
+  const trpLblEl=document.getElementById('hq-trp-lbl');
+  if(trpLblEl && fd.troopsLabel) trpLblEl.textContent=fd.troopsLabel.charAt(0).toUpperCase()+fd.troopsLabel.slice(1);
   const btn=document.getElementById('hq-upgrade-btn');
   if(lv>=5){btn.classList.add('b-off');document.getElementById('hq-cost').textContent='MAX';}
-  else document.getElementById('hq-cost').textContent=`-${HQ_LEVELS[lv-1].upgradeCost} 💰`;
+  else{btn.classList.remove('b-off');document.getElementById('hq-cost').textContent=`-${HQ_LEVELS[lv-1].upgradeCost} 💰`;}
 }
 
 // ═══════════════════════════════════════
@@ -1154,6 +1264,93 @@ function startCD(s){
     if(G.cooldown<=0){clearInterval(iv);fill.style.width='0%';const b=G.selected?.blockId?getB(G.selected.blockId):null;if(b)renderActBtns(b);}
   },1000);
 }
+function trpLbl(){return FACTIONS[G.faction]?.troopsLabelGen||'братвы';}
+
+// ═══════════════════════════════════════
+// COMMANDER
+// ═══════════════════════════════════════
+function renderCommanderSection(){
+  const fd=FACTIONS[G.faction]; if(!fd)return;
+  const cmds=COMMANDERS[G.faction]||[];
+  const el=document.getElementById('commander-section'); if(!el)return;
+  let html='';
+  if(G.commander){
+    const cur=cmds.find(c=>c.id===G.commander);
+    if(cur) html+=`<div class="cmd-card active-cmd"><div style="display:flex;align-items:center;gap:10px"><div class="cmd-icon">${cur.icon}</div><div><div class="cmd-name">${cur.name}</div><div class="cmd-title">${cur.title} · АКТИВЕН</div><div class="cmd-bonus">${cur.desc}</div></div></div></div>`;
+  } else {
+    html+=`<div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);padding:4px 0 8px">Нет командира — найми для бонусов</div>`;
+  }
+  cmds.forEach(c=>{
+    if(G.commander===c.id)return;
+    const locked=G.level<c.unlockLevel;
+    html+=`<div class="cmd-card${locked?' cmd-locked':''}" ${locked?'':'onclick="hireCommander(\''+c.id+'\')"'}><div style="display:flex;align-items:center;gap:10px"><div class="cmd-icon">${c.icon}</div><div style="flex:1"><div class="cmd-name">${c.name}</div><div class="cmd-title">${c.title}${locked?` · ОТКР. УР.${c.unlockLevel}`:''}</div><div class="cmd-bonus">${c.desc}</div><div class="cmd-cost">${locked?`🔒 Нужен ур.${c.unlockLevel}`:`-${c.cost} 💰`}</div></div></div></div>`;
+  });
+  el.innerHTML=html;
+}
+function hireCommander(cid){
+  const cmds=COMMANDERS[G.faction]||[]; const c=cmds.find(x=>x.id===cid);
+  if(!c)return;
+  if(G.level<c.unlockLevel){toast('Нужен более высокий ранг!','e');return;}
+  if(G.gold<c.cost){toast('Мало бабок!','e');return;}
+  G.gold-=c.cost; G.commander=c.id;
+  toast(`${c.name} нанят!`,'s');
+  addEv('ev-inf',`⭐ Командир: <b>${c.name}</b> (${c.desc})`);
+  updateStats(); renderCommanderSection();
+}
+
+// ═══════════════════════════════════════
+// ALLIANCE
+// ═══════════════════════════════════════
+function createAlliance(){
+  if(G.gold<1000){toast('Нужно 1000 бабок!','e');return;}
+  G.gold-=1000;
+  const fd=FACTIONS[G.faction];
+  const name=fd.name==='ПАЦАНЫ'?'Семья Е-Бурга':'Щит Урала';
+  G.alliance={name,level:1,myRank:'R1',tech:{troops:0,siege:0,defense:0,intel:0},
+    members:[{name:'ТЫ',rank:'R1',you:true,zones:G.zones},{name:'Алёха',rank:'R2',zones:5},{name:'Дима',rank:'R3',zones:3},{name:'Вася',rank:'R4',zones:2},{name:'Новичок',rank:'R5',zones:0}]};
+  G.allianceTechPoints=200;
+  updateStats(); toast('АЛЬЯНС СОЗДАН!','s');
+  addEv('ev-inf',`🤝 Создан альянс <b>${name}</b>`);
+  renderAllianceTab();
+}
+function renderAllianceTab(){
+  if(!G.alliance){
+    const noneEl=document.getElementById('al-none'); const infoEl=document.getElementById('al-info');
+    if(noneEl)noneEl.style.display='block'; if(infoEl)infoEl.style.display='none';
+    const ex=document.getElementById('al-existing');
+    if(ex) ex.innerHTML=[{name:'Ночные волки',faction:'e1',members:4,zones:12,level:2},{name:'Синие ястребы',faction:'e2',members:3,zones:8,level:1},{name:'Фиолетовые',faction:'e3',members:5,zones:15,level:3}]
+      .map(a=>`<div class="al-member" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:${FAC_COLORS[a.faction]}"></div><div class="al-mname">${a.name}</div></div><div class="al-mzones">ур.${a.level} · ${a.members} чел. · ${a.zones} кв.</div></div>`).join('');
+    return;
+  }
+  const noneEl=document.getElementById('al-none'); const infoEl=document.getElementById('al-info');
+  if(noneEl)noneEl.style.display='none'; if(infoEl)infoEl.style.display='block';
+  const al=G.alliance;
+  document.getElementById('al-name-lbl').textContent=al.name;
+  document.getElementById('al-level-lbl').textContent=al.level;
+  document.getElementById('al-members-lbl').textContent=al.members.length;
+  document.getElementById('al-tp-lbl').textContent=G.allianceTechPoints;
+  const rc={R1:'var(--gold-b)',R2:'var(--orange-b)',R3:'var(--blue-b)',R4:'var(--text)',R5:'var(--dim)'};
+  document.getElementById('al-members-list').innerHTML=al.members.map(m=>`<div class="al-member"><div class="al-rank" style="color:${rc[m.rank]||'#ccc'}">${m.rank}</div><div class="al-mname${m.you?' you':''}">${m.name}${m.you?' (Ты)':''}</div><div class="al-mzones">${m.you?G.zones:m.zones} кв.</div></div>`).join('');
+  document.getElementById('al-tech-list').innerHTML=AL_TECHS.map(t=>{
+    const cur=al.tech[t.id]||0; const maxed=cur>=3; const next=!maxed?t.levels[cur]:null;
+    return `<div class="al-tech"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="al-tech-name">${t.icon} ${t.name} · <span style="color:var(--purple-b)">Ур.${cur}/3</span></div>${!maxed?`<button style="font-family:'Bebas Neue',sans-serif;font-size:10px;border:1px solid var(--purple-b);color:var(--purple-b);background:transparent;padding:3px 7px;cursor:pointer;border-radius:2px" onclick="upgradeAllianceTech('${t.id}')">⬆ -${next.cost} ОА</button>`:'<span style="font-size:9px;color:var(--green-b)">MAX</span>'}</div><div class="al-tech-bar"><div class="al-tech-fill" style="width:${cur/3*100}%"></div></div><div class="al-tech-info"><span>${cur>0?t.levels[cur-1].bonus:'—'}</span><span>${!maxed?'след: '+next.bonus:'✓ Полностью'}</span></div></div>`;
+  }).join('');
+  const bonuses=AL_TECHS.filter(t=>(al.tech[t.id]||0)>0).map(t=>`${t.icon} ${t.levels[(al.tech[t.id]||0)-1].bonus}`);
+  document.getElementById('al-bonuses').innerHTML=bonuses.length?bonuses.map(b=>`<div class="al-bonus-item">✓ ${b}</div>`).join(''):`<div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim)">Нет активных бонусов — прокачай технологии</div>`;
+}
+function upgradeAllianceTech(techId){
+  if(!G.alliance)return;
+  const t=AL_TECHS.find(x=>x.id===techId); if(!t)return;
+  const cur=G.alliance.tech[techId]||0;
+  if(cur>=3){toast('Максимальный уровень!','i');return;}
+  const cost=t.levels[cur].cost;
+  if(G.allianceTechPoints<cost){toast(`Нужно ${cost} очков альянса!`,'e');return;}
+  G.allianceTechPoints-=cost; G.alliance.tech[techId]=cur+1;
+  toast(`${t.name} → ур.${cur+1}!`,'s');
+  addEv('ev-inf',`🤝 Технология: <b>${t.name}</b> → ур.${cur+1}`);
+  renderAllianceTab();
+}
+
 function updateStats(){
   if(!DISTRICTS.length)return;
   const all=DISTRICTS.flatMap(d=>d.blocks);
@@ -1169,6 +1366,7 @@ function updateStats(){
   renderLB();
 }
 function renderLB(){
+  if(G.alliance){const mEl=G.alliance.members.find(m=>m.you);if(mEl)mEl.zones=G.zones;}
   const all=DISTRICTS.flatMap(d=>d.blocks);
   const c={mine:0,e1:0,e2:0,e3:0};
   all.forEach(b=>{if(c[b.faction]!==undefined)c[b.faction]++;});
