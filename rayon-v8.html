@@ -271,7 +271,7 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
 <!-- LOGIN SCREEN -->
 <div id="login-screen" style="display:none">
   <div class="ls-title">РАЙОН</div>
-  <div class="ls-sub">// РЕАЛЬНЫЙ МУЛЬТИПЛЕЕР · ЕКАТЕРИНБУРГ</div>
+  <div class="ls-sub">// МУЛЬТИПЛЕЕР · РОССИЯ</div>
   <input class="ls-input" id="name-input" type="text" maxlength="20" placeholder="ТВО ПРОЗВИЩЕ" autocomplete="off" autocorrect="off" spellcheck="false">
   <button class="ls-btn" onclick="enterName()">ВОЙТИ В ИГРУ</button>
   <div class="ls-err" id="ls-err"></div>
@@ -689,7 +689,12 @@ async function enterName(){
   }
 
   // New player: check name uniqueness
-  const {data:existing}=await sb.from('players').select('id').eq('name',name).maybeSingle();
+  const {data:existing,error:selErr}=await sb.from('players').select('id').eq('name',name).maybeSingle();
+  if(selErr){
+    const msg=selErr.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':selErr.message;
+    document.getElementById('ls-err').textContent='Ошибка: '+msg;
+    hide('loading');show('login-screen');return;
+  }
   if(existing){
     document.getElementById('ls-err').textContent='Такое прозвище уже занято — выбери другое';
     hide('loading');show('login-screen');return;
@@ -698,7 +703,8 @@ async function enterName(){
   // Create new player
   const {data:newP,error}=await sb.from('players').insert({name}).select().single();
   if(error||!newP){
-    document.getElementById('ls-err').textContent='Ошибка соединения — попробуй ещё раз';
+    const msg=error?.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':error?.message||'неизвестная ошибка';
+    document.getElementById('ls-err').textContent='Ошибка: '+msg;
     hide('loading');show('login-screen');return;
   }
   localStorage.setItem('rayon_pid',newP.id);
