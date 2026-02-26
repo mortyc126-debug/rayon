@@ -1,7 +1,9 @@
-// Vercel Serverless Function — returns Supabase public config
-// Set environment variables in Vercel → Project Settings → Environment Variables:
-//   SUPABASE_URL  = https://ooozuuppbggjwhijbwsr.supabase.co
-//   SUPABASE_KEY  = (your anon key)
+// Vercel Serverless Function — returns public config
+// Set in Vercel → Project Settings → Environment Variables:
+//   SUPABASE_URL      = https://xxxx.supabase.co
+//   SUPABASE_KEY      = (anon key)
+//   WEBAPP_URL        = https://rayon-nu.vercel.app
+//   TELEGRAM_BOT_TOKEN = (bot token — server-side only, NOT returned here)
 module.exports = function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,5 +13,6 @@ module.exports = function handler(req, res) {
   res.status(200).json({
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_KEY,
+    webappUrl: process.env.WEBAPP_URL || '',
   });
 };

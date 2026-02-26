@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>РАЙОН v8</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&family=Oswald:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* ── SUPABASE CONFIG ─────────────────────────
@@ -655,6 +656,15 @@ async function init(){
   // Build geometry
   DISTRICTS=buildDistrictsGeometry();
 
+  // Telegram Mini App auto-login
+  const twa=window.Telegram?.WebApp;
+  if(twa?.initData){
+    twa.ready();
+    twa.expand();
+    await tgAutoLogin(twa);
+    return;
+  }
+
   // Check returning player
   const savedId=localStorage.getItem('rayon_pid');
   const savedName=localStorage.getItem('rayon_name');
@@ -665,6 +675,56 @@ async function init(){
 
   hide('loading');
   show('login-screen');
+}
+
+async function tgAutoLogin(twa){
+  document.getElementById('ld-sub').textContent='// TELEGRAM AUTH...';
+  try{
+    const r=await fetch('/api/tg-auth',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({initData:twa.initData})
+    });
+    const res=await r.json();
+    if(!res.ok) throw new Error(res.error||'auth failed');
+
+    const tgUser=res.user;
+    // Build name: prefer username, fallback to first_name
+    const rawName=(tgUser.username||tgUser.first_name||'ИГРОК').toUpperCase().replace(/[^А-ЯA-Z0-9 '_-]/gi,'').slice(0,16);
+    const tgId=String(tgUser.id);
+
+    // Try find existing player by tg_id stored in localStorage
+    const savedId=localStorage.getItem('rayon_pid');
+    if(savedId){
+      const {data:p}=await sb.from('players').select().eq('id',savedId).single();
+      if(p){await loadPlayer(p);return;}
+    }
+
+    // Create or find player with this Telegram name
+    const name=rawName||'TG'+tgId.slice(-4);
+    const {data:existing}=await sb.from('players').select('id').eq('name',name).maybeSingle();
+    let pid;
+    if(existing){
+      pid=existing.id;
+      const {data:p}=await sb.from('players').select().eq('id',pid).single();
+      if(p){localStorage.setItem('rayon_pid',p.id);localStorage.setItem('rayon_name',p.name);await loadPlayer(p);return;}
+    } else {
+      const {data:newP,error}=await sb.from('players').insert({name,faction:null}).select().single();
+      if(error||!newP) throw new Error(error?.message||'insert failed');
+      localStorage.setItem('rayon_pid',newP.id);
+      localStorage.setItem('rayon_name',newP.name);
+      G.playerId=newP.id; G.playerName=newP.name;
+      hide('loading');
+      document.getElementById('fs-who').textContent=`// ПРИВЕТ, ${newP.name}`;
+      show('faction-screen');
+      return;
+    }
+  }catch(e){
+    // Telegram auth failed — fall back to normal login
+    document.getElementById('ld-sub').textContent='// TG AUTH FAILED: '+e.message;
+    hide('loading');
+    show('login-screen');
+  }
 }
 
 async function enterName(){
