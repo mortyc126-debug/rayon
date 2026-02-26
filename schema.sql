@@ -7,7 +7,7 @@
 create table if not exists players (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  faction text not null check (faction in ('bandits','cops')),
+  faction text check (faction in ('bandits','cops')),
   gold int not null default 1200,
   troops int not null default 180,
   xp int not null default 0,

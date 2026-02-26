@@ -672,49 +672,55 @@ async function enterName(){
   let name=(inp.value||'').trim().toUpperCase().replace(/[^А-ЯA-Z0-9 '_-]/gi,'');
   if(name.length<2){document.getElementById('ls-err').textContent='Минимум 2 символа';return;}
 
-  // Check if returning player (same device, skip name check)
   const savedId=localStorage.getItem('rayon_pid');
-  const savedName=localStorage.getItem('rayon_name');
 
   hide('login-screen');
   show('loading');
 
-  if(savedId){
-    // Try to load existing player
-    const {data:p}=await sb.from('players').select().eq('id',savedId).single();
-    if(p){
-      await loadPlayer(p);
-      return;
+  // Safety timeout: if DB hangs for 12s, show error
+  const tmout=setTimeout(()=>{
+    hide('loading');show('login-screen');
+    document.getElementById('ls-err').textContent='Ошибка: нет ответа от сервера — проверь Supabase';
+  },12000);
+
+  try{
+    if(savedId){
+      const {data:p}=await sb.from('players').select().eq('id',savedId).single();
+      if(p){clearTimeout(tmout);await loadPlayer(p);return;}
     }
-  }
 
-  // New player: check name uniqueness
-  const {data:existing,error:selErr}=await sb.from('players').select('id').eq('name',name).maybeSingle();
-  if(selErr){
-    const msg=selErr.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':selErr.message;
-    document.getElementById('ls-err').textContent='Ошибка: '+msg;
-    hide('loading');show('login-screen');return;
-  }
-  if(existing){
-    document.getElementById('ls-err').textContent='Такое прозвище уже занято — выбери другое';
-    hide('loading');show('login-screen');return;
-  }
+    // New player: check name uniqueness
+    const {data:existing,error:selErr}=await sb.from('players').select('id').eq('name',name).maybeSingle();
+    if(selErr){
+      const msg=selErr.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':selErr.message;
+      clearTimeout(tmout);document.getElementById('ls-err').textContent='Ошибка: '+msg;
+      hide('loading');show('login-screen');return;
+    }
+    if(existing){
+      clearTimeout(tmout);document.getElementById('ls-err').textContent='Такое прозвище уже занято — выбери другое';
+      hide('loading');show('login-screen');return;
+    }
 
-  // Create new player
-  const {data:newP,error}=await sb.from('players').insert({name}).select().single();
-  if(error||!newP){
-    const msg=error?.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':error?.message||'неизвестная ошибка';
-    document.getElementById('ls-err').textContent='Ошибка: '+msg;
-    hide('loading');show('login-screen');return;
-  }
-  localStorage.setItem('rayon_pid',newP.id);
-  localStorage.setItem('rayon_name',name);
-  G.playerId=newP.id; G.playerName=name;
+    // Create new player (faction=null, chosen on next screen)
+    const {data:newP,error}=await sb.from('players').insert({name,faction:null}).select().single();
+    if(error||!newP){
+      const msg=error?.code==='42P01'?'Таблицы не созданы — запусти schema.sql в Supabase':error?.message||'неизвестная ошибка';
+      clearTimeout(tmout);document.getElementById('ls-err').textContent='Ошибка: '+msg;
+      hide('loading');show('login-screen');return;
+    }
+    localStorage.setItem('rayon_pid',newP.id);
+    localStorage.setItem('rayon_name',name);
+    G.playerId=newP.id; G.playerName=name;
 
-  hide('loading');
-  // Show faction selection
-  document.getElementById('fs-who').textContent=`// ПРИВЕТ, ${name}`;
-  show('faction-screen');
+    clearTimeout(tmout);
+    hide('loading');
+    document.getElementById('fs-who').textContent=`// ПРИВЕТ, ${name}`;
+    show('faction-screen');
+  }catch(e){
+    clearTimeout(tmout);
+    document.getElementById('ls-err').textContent='Ошибка: '+e.message;
+    hide('loading');show('login-screen');
+  }
 }
 
 async function loadPlayer(p){
