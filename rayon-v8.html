@@ -264,7 +264,7 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
 <!-- LOADING -->
 <div id="loading">
   <div class="ld-title">РАЙОН</div>
-  <div class="ld-sub">// ПОДКЛЮЧЕНИЕ</div>
+  <div class="ld-sub" id="ld-sub">// ПОДКЛЮЧЕНИЕ</div>
   <div class="ld-dots"><div class="ld-dot"></div><div class="ld-dot"></div><div class="ld-dot"></div></div>
 </div>
 
@@ -425,14 +425,26 @@ html,body{width:100%;height:100%;overflow:hidden;user-select:none;}
 <div id="toast"></div>
 <script>
 // ════════════════════════════════════════
-// SUPABASE CONFIG — замени своими данными
-// Supabase → Settings → API
+// SUPABASE — ключи берутся из /api/config
+// Задай в Vercel → Project Settings → Env:
+//   SUPABASE_URL  = https://ooozuuppbggjwhijbwsr.supabase.co
+//   SUPABASE_KEY  = (anon key)
 // ════════════════════════════════════════
-const SUPABASE_URL = 'https://ТВОЙ_ПРОЕКТ.supabase.co';
-const SUPABASE_KEY = 'ТВОЙ_ANON_KEY';
-
 const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+let sb = null;
+
+async function initSupabase() {
+  try {
+    const r = await fetch('/api/config');
+    if (!r.ok) throw new Error('config ' + r.status);
+    const { url, key } = await r.json();
+    if (!url || !key) throw new Error('empty config');
+    sb = createClient(url, key);
+  } catch (e) {
+    document.getElementById('ld-sub').textContent = '// ОШИБКА: ' + e.message;
+    throw e;
+  }
+}
 
 // ════════════════════════════════════════
 // CONSTANTS
@@ -638,6 +650,8 @@ function dfac(b){
 // SUPABASE — INIT & AUTH
 // ════════════════════════════════════════
 async function init(){
+  // Init Supabase from env vars
+  await initSupabase();
   // Build geometry
   DISTRICTS=buildDistrictsGeometry();
 
@@ -1340,11 +1354,14 @@ function passiveIncome(){
 // TIMER TICK (events, special reset, siege timers)
 // ════════════════════════════════════════
 const EVENT_TYPES=[
-  {id:'hotpoint',name:'⚡ Горячая точка',duration:30*60},
-  {id:'double',  name:'💰 Двойной доход',duration:120*60},
-  {id:'truce',   name:'🛡 Перемирие',    duration:30*60},
-  {id:'raid',    name:'💸 Налёт',        duration:20*60},
-  {id:'chaos',   name:'☠ Беспредел',     duration:15*60},
+  {id:'hotpoint', name:'⚡ Горячая точка',  duration:30*60},
+  {id:'double',   name:'💰 Двойной доход',  duration:120*60},
+  {id:'truce',    name:'🛡 Перемирие',      duration:30*60},
+  {id:'raid',     name:'💸 Налёт',          duration:20*60},
+  {id:'chaos',    name:'☠ Беспредел',       duration:15*60},
+  // 🥚 Пасхалки
+  {id:'word',     name:'🩸 Слово пацана',   duration:20*60},   // Слово пацана
+  {id:'chetko',   name:'✅ Чётко конкретно', duration:60*60},  // Реальные пацаны
 ];
 
 async function timerTick(){
@@ -1388,8 +1405,21 @@ async function triggerGlobalEvent(){
     if(cands.length)hotBlockId=cands[Math.floor(Math.random()*cands.length)].id;
   }
   await sb.from('global_state').update({active_event:ev.id,active_event_ends_at:evEndsAt,hot_block_id:hotBlockId,next_event_at:nextAt,next_event_type:EVENT_TYPES[Math.floor(Math.random()*EVENT_TYPES.length)].name}).eq('id',1);
-  await sb.from('game_events').insert({type:'ev-event',message:`<span class="hl-gold">${ev.name}</span> — началось!`,player_faction:'system'});
+  const evMsgs={
+    hotpoint:'Горячая точка — бери пока горячо!',
+    double:'Двойной доход — шинкуй бабки!',
+    truce:'Перемирие — никаких осад',
+    raid:'Налёт — все атакуют всех',
+    chaos:'Беспредел — хаос в районе',
+    word:'🩸 Слово пацана — не давай волю слабым!',   // 🥚
+    chetko:'✅ Чётко конкретно — доход ×1.5 на час!',  // 🥚
+  };
+  await sb.from('game_events').insert({type:'ev-event',message:`<span class="hl-gold">${ev.name}</span> — ${evMsgs[ev.id]||'началось!'}`,player_faction:'system'});
   if(ev.id==='double'){const orig=G.income;const iv=setInterval(()=>{G.gold+=Math.max(1,Math.floor(orig/720));document.getElementById('h-gold').textContent=G.gold;},5000);setTimeout(()=>clearInterval(iv),ev.duration*1000);}
+  // 🥚 "Чётко конкретно" — бесплатная братва на час (Реальные пацаны)
+  if(ev.id==='chetko'){const iv=setInterval(()=>{G.troops=Math.min(G.troops+3,500);document.getElementById('h-troops').textContent=G.troops;},5000);setTimeout(()=>clearInterval(iv),ev.duration*1000);}
+  // 🥚 "Слово пацана" — AI захватывает случайные нейтральные (хаос)
+  if(ev.id==='word'){const all=DISTRICTS.flatMap(d=>d.blocks);const neutrals=all.filter(b=>b.faction==='neutral');neutrals.slice(0,5).forEach(b=>{b.faction=AI_FACS[Math.floor(Math.random()*3)];});if(G.view==='district')renderDistrict(G.selected?.distId);}
 }
 
 function showEventFlash(){
@@ -1531,6 +1561,43 @@ function setMapH(){document.getElementById('map-wrap').style.height=Math.round((
 setMapH();window.addEventListener('resize',setMapH);
 // Allow pressing Enter on name input
 document.getElementById('name-input')?.addEventListener('keydown',e=>{if(e.key==='Enter')enterName();});
+
+// ════════════════════════════════════════
+// 🥚 EASTER EGGS
+// ════════════════════════════════════════
+// Секретный клик по логотипу РАЙОН — 5 раз подряд
+let _logoClicks=0,_logoCT=null;
+document.getElementById('logo-txt')?.addEventListener('click',()=>{
+  _logoClicks++;clearTimeout(_logoCT);
+  _logoCT=setTimeout(()=>_logoClicks=0,1500);
+  if(_logoClicks>=5){
+    _logoClicks=0;
+    // 🥚 Реальные пацаны — "В натуре пацаны!"
+    G.gold+=500;G.troops+=50;
+    document.getElementById('h-gold').textContent=G.gold;
+    document.getElementById('h-troops').textContent=G.troops;
+    toast('В НАТУРЕ ПАЦАНЫ! +500 💰 +50','s');
+    addLocalEv('ev-event','🥚 <span class="hl-gold">РЕАЛЬНЫЕ ПАЦАНЫ</span> — секретный бонус активирован. В натуре!');
+    // Анимация логотипа
+    const logo=document.getElementById('logo-txt');
+    logo.style.color='#f1c40f';logo.style.textShadow='0 0 20px #f1c40f';
+    setTimeout(()=>{logo.style.color='';logo.style.textShadow='';},2000);
+  }
+});
+
+// Редкие тосты с отсылками (вместо обычных)
+const _origToast=toast;
+window._toastOverride=function(msg,type){
+  // 5% шанс заменить success-тост на фразу
+  if(type==='s'&&Math.random()<0.05){
+    const phrases=['ЧЁТКО!','В НАТУРЕ!','КОНКРЕТНО БРАТАН!','РЕАЛЬНО!','ПО ПОНЯТИЯМ!'];
+    msg=phrases[Math.floor(Math.random()*phrases.length)];
+  }
+  _origToast(msg,type);
+};
+// Переопределяем toast через прокси
+const _toastOrigRef=toast;
+// (Уже переопределён выше через window._toastOverride — call it in captureSuccess)
 
 // ════════════════════════════════════════
 // BOOT
