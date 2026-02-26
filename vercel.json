@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "*.html", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/", "dest": "/index.html" },
+    { "src": "/v6", "dest": "/rayon-v6.html" },
+    { "src": "/v7", "dest": "/rayon-v7.html" }
+  ]
+}
