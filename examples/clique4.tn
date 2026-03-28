@@ -1,0 +1,13 @@
+// 4-Clique detection on 8 vertices
+// A hard problem — Tension should detect this
+
+problem clique4(N: 8) {
+    vars: e[28]
+    find: exists(a in 0..N, b in a + 1..N, c in b + 1..N, d in c + 1..N) {
+        e[idx(a, b)] and e[idx(a, c)] and e[idx(a, d)]
+        and e[idx(b, c)] and e[idx(b, d)] and e[idx(c, d)]
+    }
+}
+
+tension clique4
+solve clique4

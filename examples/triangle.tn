@@ -1,0 +1,12 @@
+// Triangle detection on 6 vertices
+// Written in Tension Language v0.1
+
+problem triangle(N: 6) {
+    vars: e[15]
+    find: exists(i in 0..N, j in i + 1..N, k in j + 1..N) {
+        e[idx(i, j)] and e[idx(i, k)] and e[idx(j, k)]
+    }
+}
+
+tension triangle
+solve triangle
