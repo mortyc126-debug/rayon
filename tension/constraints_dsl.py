@@ -8,8 +8,8 @@ Declarative constraint language over RayonInt:
   solution = solve()
 
 The ConstraintEngine solves in three phases:
-  Phase 1: Extract and solve XOR constraints via GF(2) Gaussian elimination
-  Phase 2: Propagate AND kills (known zeros force result bits to zero)
+  Phase 1: Propagate AND kills (known zeros force result bits to zero)
+  Phase 2: GF(2) Gaussian elimination on XOR constraints (with known bits injected)
   Phase 3: Branch on remaining unknowns (backtracking search)
 
 Reports: n_linear solved, n_kills, n_branches remaining.
@@ -379,8 +379,8 @@ def _extract_and_kill(lhs, rhs):
 class ConstraintEngine:
     """
     Three-phase constraint solver:
-      Phase 1: GF(2) solve for XOR-linear constraints
-      Phase 2: Propagate AND kills
+      Phase 1: Propagate AND kills (cheap bit-level propagation)
+      Phase 2: GF(2) Gaussian elimination for XOR-linear constraints
       Phase 3: Branch on remaining unknowns (backtracking)
     """
 
@@ -435,39 +435,11 @@ class ConstraintEngine:
         var_idx = {name: i for i, name in enumerate(var_names)}
         n_vars = len(var_names)
 
-        # ── Phase 1: GF(2) solve per bit ──
-        # Each XOR constraint applies bitwise: for each bit position,
-        # we get a GF(2) equation.
         env = {}  # name -> RayonInt (partial knowledge)
         for name in var_names:
             env[name] = RayonInt.unknown(width=self._vars[name].width)
 
-        bits_solved = 0
-        for bit in range(width):
-            equations = []
-            for var_set, const_val in xor_linear:
-                indices = set()
-                for vname in var_set:
-                    if vname in var_idx:
-                        indices.add(var_idx[vname])
-                const_bit = (const_val >> bit) & 1
-                equations.append((indices, const_bit))
-
-            if not equations:
-                continue
-
-            result = _gf2_solve(equations, n_vars)
-            if result is None:
-                return None  # inconsistent at this bit
-
-            for vi, bval in result.items():
-                vname = var_names[vi]
-                env[vname].bits[bit] = bval
-                bits_solved += 1
-
-        self.stats['n_linear'] = bits_solved
-
-        # ── Phase 2: AND kill propagation ──
+        # ── Phase 1: AND kill propagation (cheap, O(bits)) ──
         kills = 0
         for vname, mask, expected in and_kills:
             if vname not in env:
@@ -489,6 +461,44 @@ class ConstraintEngine:
                         return None  # contradiction: mask kills bit but expected is 1
 
         self.stats['n_kills'] = kills
+
+        # ── Phase 2: GF(2) solve per bit ──
+        # Each XOR constraint applies bitwise. Known bits from AND kills
+        # are injected as constants, reducing the system.
+        bits_solved = 0
+        for bit in range(width):
+            equations = []
+            for var_set, const_val in xor_linear:
+                indices = set()
+                const_bit = (const_val >> bit) & 1
+                for vname in var_set:
+                    vi = var_idx.get(vname)
+                    if vi is None:
+                        continue
+                    # If this var's bit is already known, absorb into constant
+                    known_bit = env[vname].bits[bit]
+                    if known_bit is not None:
+                        const_bit ^= known_bit
+                    else:
+                        indices.add(vi)
+                equations.append((indices, const_bit))
+
+            if not equations:
+                continue
+
+            result = _gf2_solve(equations, n_vars)
+            if result is None:
+                return None  # inconsistent at this bit
+
+            for vi, bval in result.items():
+                vname = var_names[vi]
+                if env[vname].bits[bit] is None:
+                    env[vname].bits[bit] = bval
+                    bits_solved += 1
+                elif env[vname].bits[bit] != bval:
+                    return None  # contradiction with AND kills
+
+        self.stats['n_linear'] = bits_solved
 
         # ── Phase 3: Branch on remaining unknowns ──
         # Build concrete partial assignments from what we know
@@ -867,8 +877,8 @@ def verify():
         print("  SOME TESTS FAILED")
     print()
     print("  Constraint DSL phases:")
-    print("    Phase 1: XOR constraints -> GF(2) Gaussian elimination")
-    print("    Phase 2: AND kills -> bit propagation")
+    print("    Phase 1: AND kills -> bit propagation (cheap, O(bits))")
+    print("    Phase 2: XOR constraints -> GF(2) Gaussian elimination")
     print("    Phase 3: Remaining unknowns -> backtracking search")
     print()
     print("  Declare WHAT you want. The engine finds HOW.")
