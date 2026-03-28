@@ -90,7 +90,8 @@ def compute_sizes(n):
     return level
 
 
-def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, input_probs2):
+def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, input_probs2,
+                        output_wire=None, output_neg=False):
     """
     Build and solve the SA2-strengthened LP for one circuit structure.
 
@@ -99,12 +100,14 @@ def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, in
     neg_flags[g]: (neg1, neg2) booleans - whether each input is negated
 
     Wire indices: 0..n-1 are inputs, n..n+s-1 are gates.
-    Output is wire n+s-1 (possibly negated -- we handle output negation separately).
+    output_wire: which wire is the output (default: last gate = n+s-1)
+    output_neg: if True, output is NOT(output_wire)
 
     Returns True if feasible for BOTH b=0 and b=1.
     """
     W = n + s  # total wires
-    output_wire = W - 1
+    if output_wire is None:
+        output_wire = W - 1
 
     for b in [0, 1]:
         # Variable layout:
@@ -257,9 +260,16 @@ def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, in
 
             return coeffs, const
 
-        # 1. Output constraint: p_{output_wire}(b) = b
-        # (output can also be negated - handled by allowing output_neg)
-        add_eq([(gvar(output_wire), 1.0)], float(b))
+        # 1. Output constraint
+        # If output_neg=False: p_{output_wire}(b) = b
+        # If output_neg=True:  p_{output_wire}(b) = 1 - b
+        target_val = float(1 - b) if output_neg else float(b)
+        if gvar(output_wire) is not None:
+            add_eq([(gvar(output_wire), 1.0)], target_val)
+        else:
+            # Output is an input wire -- check consistency
+            if abs(gval(output_wire) - target_val) > 1e-10:
+                return False  # Can't match
 
         # 2. Gate semantics (marginals) - each gate is AND/OR of two literals
         for g_idx in range(s):
@@ -480,6 +490,7 @@ def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, in
 def sample_circuits(n, s, input_probs, input_probs2, max_tries=3000):
     """
     Sample random circuit structures of size s (AND/OR gates with free NOT).
+    Try each structure with all possible output wires (and negation).
     Returns True if ANY structure is LP-feasible.
     """
     import random as _rnd
@@ -501,9 +512,13 @@ def sample_circuits(n, s, input_probs, input_probs2, max_tries=3000):
             conn_list.append((w1, w2))
             neg_list.append((n1, n2))
         count += 1
-        if build_and_check_lp(n, s, gt_list, conn_list, neg_list,
-                               input_probs, input_probs2):
-            return True, count
+        # Try all possible output wires (any gate, possibly negated)
+        for out_w in range(n, n + s):
+            for out_neg in [False, True]:
+                if build_and_check_lp(n, s, gt_list, conn_list, neg_list,
+                                       input_probs, input_probs2,
+                                       output_wire=out_w, output_neg=out_neg):
+                    return True, count
 
     return False, count
 
