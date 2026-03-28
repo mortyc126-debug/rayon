@@ -571,11 +571,7 @@ if __name__ == '__main__':
         lp_min = None
         t0 = time.time()
         for s_test in range(1, actual + 1):
-            if s_test <= 3:
-                # Enumerate all for small sizes
-                feas, cnt = enumerate_circuits(n, s_test, ip, ip2)
-            else:
-                feas, cnt = sample_circuits(n, s_test, ip, ip2, max_tries=5000)
+            feas, cnt = sample_circuits(n, s_test, ip, ip2, max_tries=3000)
             results.append(f"s{s_test}:{'F' if feas else 'I'}")
             if feas and lp_min is None:
                 lp_min = s_test
