@@ -740,8 +740,9 @@ def verify():
     # ── Test 3: System of 3 XOR equations → GF(2) solve ──
     print("TEST 3: System of 3 XOR equations (GF2 solve)")
     print("-" * 50)
-    # a ^ b == 0x55, b ^ c == 0xAA, a ^ c == 0xFF
-    # Solution: a ^ b = 0x55, b ^ c = 0xAA → a ^ c = 0x55 ^ 0xAA = 0xFF ✓
+    # 3 vars, 3 XOR equations + 1 AND kill to pin free variable
+    # a ^ b == 0x55, b ^ c == 0xAA, a ^ c == 0xFF (rank 2, 1 free)
+    # Pin a with AND: a & 0xFF == 0x33 → a=0x33, then b=0x33^0x55=0x66, c=0x66^0xAA=0xCC
     engine = ConstraintEngine()
     a = engine.var("a", width=8)
     b = engine.var("b", width=8)
@@ -749,14 +750,18 @@ def verify():
     engine.constraint(a ^ b == Const(0x55))
     engine.constraint(b ^ c == Const(0xAA))
     engine.constraint(a ^ c == Const(0xFF))
+    engine.constraint(a & Const(0xFF) == Const(0x33))
     sol = engine.solve()
     if sol is not None:
         av, bv, cv = sol['a'], sol['b'], sol['c']
         ok = (av ^ bv == 0x55) and (bv ^ cv == 0xAA) and (av ^ cv == 0xFF)
+        ok = ok and av == 0x33
         print(f"  Solution: a={av:#04x}, b={bv:#04x}, c={cv:#04x}")
         print(f"  Check: a^b={av^bv:#04x}, b^c={bv^cv:#04x}, a^c={av^cv:#04x}")
         print(f"  Valid: {'PASS' if ok else 'FAIL'}")
-        print(f"  Stats: n_linear={engine.stats['n_linear']} bits solved by GF2")
+        print(f"  Stats: n_linear={engine.stats['n_linear']}, "
+              f"n_kills={engine.stats['n_kills']}, "
+              f"n_branches={engine.stats['n_branches']}")
         if not ok:
             all_pass = False
     else:
