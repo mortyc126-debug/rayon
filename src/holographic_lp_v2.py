@@ -465,14 +465,14 @@ if __name__ == '__main__':
         results = []
         lp_min = actual  # default
         for s_test in range(1, 4):  # test s=1,2,3
-            feas, cnt = systematic_check_all(n, s_test, ip, ip2, max_tries=5000)
+            feas, cnt = systematic_check_all(n, s_test, ip, ip2, max_tries=2000)
             results.append("INF" if not feas else "feas")
             if feas and lp_min == actual:
                 lp_min = s_test
 
-        # For s=4, try more random structures
+        # For s=4, try random structures
         if lp_min == actual:
-            feas4, cnt4 = systematic_check_all(n, 4, ip, ip2, max_tries=10000)
+            feas4, cnt4 = systematic_check_all(n, 4, ip, ip2, max_tries=5000)
             if feas4:
                 lp_min = 4
 

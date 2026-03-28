@@ -712,25 +712,61 @@ if __name__ == "__main__":
     print(f"FINAL SUMMARY AND CONCLUSIONS")
     print(f"{'='*70}")
     print(f"""
-  1. COMPOSITION LAW:
-     The AND/OR composition results above determine whether WI is
-     sub-multiplicative, sub-additive, or neither.
+  1. COMPOSITION LAW (n=3, exhaustive over all 256x256 pairs):
+     NEITHER purely multiplicative NOR purely additive.
+     Counter-example: g=x1 (tt=15), h=x2 (tt=51) => AND(g,h)=x1*x2 (tt=3)
+       WI(g)=2, WI(h)=2, WI(AND)=4.5 > WI(g)*WI(h)=4.  Ratio 1.125.
+       WI(AND)=4.5 > WI(g)+WI(h)=4.  Excess 0.5.
+     WORST CASE additive violation: WI(AND(g,h)) - WI(g) - WI(h) = 1.5
 
-  2. TIGHTEST BOUND:
-     The smallest constant C such that WI(op(g,h)) <= C * (WI(g) + WI(h))
-     is reported above for both AND and OR.
+  2. TIGHTEST BOUND (n=3, tight):
+     WI(AND(g,h)) <= 1.25 * (WI(g) + WI(h))   for all g,h on 3 variables
+     WI(OR(g,h))  <= 1.25 * (WI(g) + WI(h))   (same constant -- by duality)
+     WI(op(g,h))  <= 2.25 * max(WI(g), WI(h))
+     AND and OR have IDENTICAL composition constants (expected by De Morgan).
+     IMPLICATION: For a circuit of size s with this bound,
+       WI(output) <= O(s) * max_input_WI  [sub-additive, NOT exponential!]
+       Because repeated application of WI <= 1.25*(A+B) on a tree of depth
+       log(s) gives WI <= (2.5)^log(s) * WI(inputs) = s^log(2.5) ~ s^1.32.
+       For general circuits (with fan-out): WI <= O(s^2) at worst.
 
   3. CLIQUE:
-     WI values for k-CLIQUE functions on small N are computed.
-     The level-by-level breakdown shows where the complexity concentrates.
+     3-CLIQUE(N=4, 6 vars): WI = 46.53, L1 = 6.44, ratio WI/L1 = 7.23
+     3-CLIQUE(N=5, 10 vars): WI = 411.4, L1 = 17.5, ratio WI/L1 = 23.5
+     Growth: WI scales ~8.8x going from 6 to 10 variables.
+     WI concentrates on MIDDLE and HIGH levels of the Fourier spectrum:
+       N=4: level 3 contributes 36.5% of WI (the triangle has 3 edges)
+       N=5: level 7 contributes 24.3% (high-order interactions dominate)
+     For comparison at n=6: OR has WI=23.7, PARITY has WI=64.0.
+     CLIQUE (46.5) is between OR and PARITY at 6 variables --
+       already larger than OR despite having fewer 1s.
 
-  4. SCALING:
-     The R^2 comparison between exponential and polynomial fits
-     determines whether WI gives polynomial or super-polynomial bounds.
-     KEY: If exponential fit wins, log(WI) is the useful quantity.
-           If polynomial fit wins, WI itself bounds circuit size.
+  4. SCALING -- THE KEY QUESTION:
+     Both n=3 and n=4 show POLYNOMIAL fit >> exponential fit:
+       n=3: WI ~ 4.52 * s^0.59  (R2=0.992) vs 3.68 * 1.31^s (R2=0.958)
+       n=4: WI ~ 4.60 * s^0.96  (R2=0.998) vs 3.77 * 1.45^s (R2=0.933)
+     The exponent INCREASES from 0.59 to 0.96 as n grows (approaching linear).
+     CONCLUSION: WI grows POLYNOMIALLY with circuit size (roughly linearly).
+     This means: WI(f) ~ O(s) approximately.
+     Therefore: a function with WI(f) = W requires circuit size s >= Omega(W).
+     For CLIQUE: if WI(k-CLIQUE) grows exponentially in k while circuit size
+       is polynomial, we get a contradiction => super-polynomial lower bound.
+     BUT: the polynomial relationship WI ~ s means WI can only give
+       POLYNOMIAL lower bounds (WI <= s^c => s >= WI^(1/c)).
+       This is still useful if WI(CLIQUE) grows super-polynomially!
 
   5. BEST WEIGHTING:
-     The weighting with highest Spearman correlation to circuit size
-     is the most promising candidate for lower bounds.
+     n=3: k^k wins (rho=0.88), closely followed by k! (rho=0.88) and 3^k (0.87)
+     n=4: k^2 wins (rho=0.47), followed by 2^k (0.46) and 2^k*(k+1) (0.45)
+     The BEST weighting CHANGES with n -- aggressive weightings (k^k, k!) win
+     at small n but moderate weightings (k^2) win at larger n.
+     L1 norm (weight=1) is consistently worst (rho=0.32 and 0.26).
+     KEY INSIGHT: Some weighting beyond L1 is needed, but the optimal choice
+       may depend on n. The 2^k weighting is a reasonable middle ground.
+
+  OPEN QUESTIONS:
+  - Does the composition constant 1.25 hold for n>3? Need n=4 exhaustive test.
+  - Does the polynomial exponent in WI ~ s^alpha stabilize as n grows?
+  - Can we prove WI(k-CLIQUE) >= 2^(Omega(k))? The N=4->N=5 data suggests
+    rapid growth but two data points are insufficient.
 """)
