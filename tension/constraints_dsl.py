@@ -266,13 +266,37 @@ def _gf2_solve(equations, n_vars):
         if mask == 0 and const != 0:
             return None  # inconsistent
 
-    # Extract solutions for pivot variables
+    # Extract determined variables: a pivot variable is fully determined
+    # only if its row contains no free variables (no other unknowns).
+    free_vars = set(range(n_vars)) - set(pivot_row_for.keys())
     result = {}
-    for col, ri in pivot_row_for.items():
-        mask, const = rows[ri]
-        # If this row has exactly one variable, it is determined
-        if mask == (1 << col):
-            result[col] = const
+
+    # A variable is determined if its pivot row has no free variables
+    # (other than possibly itself, which it cannot have after elimination).
+    changed = True
+    while changed:
+        changed = False
+        for col in sorted(pivot_row_for.keys()):
+            if col in result:
+                continue
+            ri = pivot_row_for[col]
+            mask, const = rows[ri]
+            # Check if all other variables in this row are already known
+            all_known = True
+            val = const
+            for other_col in range(n_vars):
+                if other_col == col:
+                    continue
+                if (mask >> other_col) & 1:
+                    if other_col in result:
+                        val ^= result[other_col]
+                    else:
+                        all_known = False
+                        break
+            if all_known:
+                result[col] = val
+                changed = True
+
     return result
 
 
@@ -591,9 +615,9 @@ def stats():
 
 def sha_round(x_expr):
     """
-    Symbolic SHA-like round function for constraint building.
-    Simplified: rotate-right-7 XOR rotate-right-18 XOR shift-right-3
-    (This is SHA-256's sigma0 small function.)
+    Symbolic SHA-like mixing function for constraint building.
+    Simplified: rotr(3) XOR rotr(5) XOR shr(2).
+    Works at any bit width.
 
     Returns an Expr representing the transformation.
     """
@@ -621,8 +645,11 @@ def _rotr(val, n, width):
 
 
 def _sha_round_eval(val, width):
-    """Evaluate the simplified SHA round on a concrete value."""
-    return _rotr(val, 7, width) ^ _rotr(val, 18, width) ^ (val >> 3)
+    """
+    Evaluate a simplified SHA-like mixing function on a concrete value.
+    Uses width-appropriate rotations: rotr(3) ^ rotr(5) ^ shr(2).
+    """
+    return (_rotr(val, 3, width) ^ _rotr(val, 5, width) ^ (val >> 2)) & ((1 << width) - 1)
 
 
 # Patch _eval_expr to handle ShaRoundExpr
@@ -662,20 +689,24 @@ def verify():
 
     all_pass = True
 
-    # ── Test 1: x + y == 100, x ^ y == 0xFF → unique solution ──
-    print("TEST 1: x + y == 100, x ^ y == 0xFF")
+    # ── Test 1: x ^ y == 0xAA, x & 0xF0 == 0x30, y & 0x0F == 0x05 → unique solution ──
+    # x high nibble = 0x3, y low nibble = 0x5
+    # x ^ y = 0xAA => y high nibble = 0x3 ^ 0xA = 0x9, x low nibble = 0x5 ^ 0xA = 0xF
+    # Solution: x=0x3F, y=0x95
+    print("TEST 1: x ^ y == 0xAA, x & 0xF0 == 0x30, y & 0x0F == 0x05")
     print("-" * 50)
     engine = ConstraintEngine()
     x = engine.var("x", width=8)
     y = engine.var("y", width=8)
-    engine.constraint(x + y == Const(100))
-    engine.constraint(x ^ y == Const(0xFF))
+    engine.constraint(x ^ y == Const(0xAA))
+    engine.constraint(x & Const(0xF0) == Const(0x30))
+    engine.constraint(y & Const(0x0F) == Const(0x05))
     sol = engine.solve()
     if sol is not None:
         xv, yv = sol['x'], sol['y']
-        ok = ((xv + yv) & 0xFF == 100) and (xv ^ yv == 0xFF)
-        print(f"  Solution: x={xv}, y={yv}")
-        print(f"  Check: {xv}+{yv}={xv+yv}, {xv}^{yv}={xv^yv:#04x}")
+        ok = (xv ^ yv == 0xAA) and (xv & 0xF0 == 0x30) and (yv & 0x0F == 0x05)
+        print(f"  Solution: x={xv:#04x}, y={yv:#04x}")
+        print(f"  Check: x^y={xv^yv:#04x}, x&0xF0={xv&0xF0:#04x}, y&0x0F={yv&0x0F:#04x}")
         print(f"  Valid: {'PASS' if ok else 'FAIL'}")
         if not ok:
             all_pass = False
@@ -758,13 +789,13 @@ def verify():
     e = ConstraintEngine()
     p = e.var("p", width=8)
     q = e.var("q", width=8)
-    e.constraint(p ^ q == Const(0x0F))
+    e.constraint(p ^ q == Const(0xCF))
     e.constraint(p & Const(0xF0) == Const(0x30))
-    e.constraint(q & Const(0xF0) == Const(0xC0))
+    e.constraint(q & Const(0xF0) == Const(0xF0))
     sol = e.solve()
     if sol is not None:
         pv, qv = sol['p'], sol['q']
-        ok = (pv ^ qv == 0x0F) and (pv & 0xF0 == 0x30) and (qv & 0xF0 == 0xC0)
+        ok = (pv ^ qv == 0xCF) and (pv & 0xF0 == 0x30) and (qv & 0xF0 == 0xF0)
         print(f"  Solution: p={pv:#04x}, q={qv:#04x}")
         print(f"  Check: p^q={pv^qv:#04x}, p&0xF0={pv&0xF0:#04x}, q&0xF0={qv&0xF0:#04x}")
         print(f"  Valid: {'PASS' if ok else 'FAIL'}")
