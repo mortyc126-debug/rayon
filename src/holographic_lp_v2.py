@@ -1,22 +1,17 @@
 """
 HOLOGRAPHIC LP v2: Level-2 Sherali-Adams strengthening for circuit lower bounds.
 
-Key idea: For each gate g with known semantics (AND/OR/NOT), the pairwise
-conditional probabilities p_{g,h}(b) = Pr[g=1 AND h=1 | f=b] must satisfy
-EXACT equalities:
-
-  AND(a,c) = g:  p_g(b) = p_{a,c}(b)
-  OR(a,c) = g:   p_g(b) = p_a(b) + p_c(b) - p_{a,c}(b)
-  NOT(a) = g:    p_g(b) = 1 - p_a(b)
-
-Plus cross-gate pairwise constraints and Sherali-Adams consistency.
+Key improvements over v1:
+1. NOT gates are FREE (matching compute_sizes convention)
+2. Each gate is AND(l1, l2) or OR(l1, l2) where l1, l2 are literals (wire or NOT(wire))
+3. Pairwise variables p_{g,h}(b) with exact equalities from gate semantics
+4. Full Sherali-Adams level-2 consistency constraints
 """
 
 import numpy as np
 from scipy.optimize import linprog
 from scipy.sparse import csc_matrix
 from itertools import product as iproduct
-import itertools
 import sys
 
 
@@ -56,7 +51,8 @@ def truth_table_properties(tt, n):
 
 
 def compute_sizes(n):
-    """Compute actual circuit sizes for all n-bit Boolean functions."""
+    """Compute actual circuit sizes for all n-bit Boolean functions.
+    NOT is free (size 0). Each AND/OR costs 1."""
     total = 2**(2**n)
     level = {}
     cur = set()
@@ -94,18 +90,26 @@ def compute_sizes(n):
     return level
 
 
-def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2):
+def build_and_check_lp(n, s, gate_types, connections, neg_flags, input_probs, input_probs2):
     """
     Build and solve the SA2-strengthened LP for one circuit structure.
+
+    gate_types[g]: 'AND' or 'OR' for gate g (0..s-1)
+    connections[g]: (w1, w2) wire indices in 0..n+g-1
+    neg_flags[g]: (neg1, neg2) booleans - whether each input is negated
+
+    Wire indices: 0..n-1 are inputs, n..n+s-1 are gates.
+    Output is wire n+s-1 (possibly negated -- we handle output negation separately).
+
     Returns True if feasible for BOTH b=0 and b=1.
     """
-    W = n + s
-    output_gate = W - 1
+    W = n + s  # total wires
+    output_wire = W - 1
 
     for b in [0, 1]:
         # Variable layout:
-        # [0..s-1]: p_g(b) for gates g = n..n+s-1
-        # [s..s+num_pairs-1]: p_{i,j}(b) for pairs with at least one gate
+        # [0..s-1]: p_w(b) for wires w = n..n+s-1 (gate outputs before negation)
+        # [s..]: p_{i,j}(b) for pairs (i,j) with i<=j, at least one >= n
 
         pair_map = {}
         idx = s
@@ -117,17 +121,18 @@ def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2)
                 idx += 1
         nv = idx
 
-        # Lists for building sparse constraint matrices
         eq_rows, eq_cols, eq_vals, eq_rhs = [], [], [], []
         ub_rows, ub_cols, ub_vals, ub_rhs = [], [], [], []
         eq_cnt = 0
         ub_cnt = 0
 
-        def gvar(g):
-            return g - n if g >= n else None
+        def gvar(w):
+            """Variable index for wire w's marginal, or None if input."""
+            return w - n if w >= n else None
 
-        def gval(g):
-            return input_probs[(g, b)] if g < n else None
+        def gval(w):
+            """Known value for wire w's marginal if it's an input."""
+            return input_probs[(w, b)] if w < n else None
 
         def pvar(i, j):
             a, c = (min(i,j), max(i,j))
@@ -159,59 +164,136 @@ def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2)
             ub_rhs.append(rhs)
             ub_cnt += 1
 
-        # 1. Output constraint
-        add_eq([(gvar(output_gate), 1.0)], float(b))
+        # Helper: get marginal of a literal (wire w, possibly negated)
+        # Returns (coeffs_list, constant) such that p_literal = sum(coeff*var) + constant
+        def literal_marginal(w, neg):
+            """Return (coeffs, const) for Pr[literal=1 | f=b]."""
+            v = gval(w)
+            if v is not None:
+                return [], (1.0 - v) if neg else v
+            else:
+                if neg:
+                    return [(gvar(w), -1.0)], 1.0
+                else:
+                    return [(gvar(w), 1.0)], 0.0
 
-        # 2. Gate semantics (marginals)
+        # Helper: get pairwise Pr[l1=1 AND l2=1 | f=b] in terms of p_{w1,w2}
+        # where l1 = w1 or NOT(w1), l2 = w2 or NOT(w2)
+        def literal_pair(w1, neg1, w2, neg2):
+            """Return (coeffs, const) for Pr[l1=1 AND l2=1 | f=b]."""
+            # Pr[l1=1, l2=1] in terms of p_{w1,w2}, p_w1, p_w2:
+            # (w1, w2):         p_{w1,w2}
+            # (w1, ~w2):        p_w1 - p_{w1,w2}
+            # (~w1, w2):        p_w2 - p_{w1,w2}
+            # (~w1, ~w2):       1 - p_w1 - p_w2 + p_{w1,w2}
+
+            coeffs = []
+            const = 0.0
+
+            # Start with the p_{w1,w2} term
+            if w1 == w2:
+                # p_{w,w} = p_w
+                sign_pair = 1.0
+                if neg1 != neg2:
+                    # one negated: Pr[w=1, ~w=1] = 0
+                    return [], 0.0
+                elif neg1 and neg2:
+                    # Pr[~w=1, ~w=1] = 1 - p_w
+                    c, k = literal_marginal(w1, True)
+                    return c, k
+                else:
+                    c, k = literal_marginal(w1, False)
+                    return c, k
+
+            pv = pvar(w1, w2)
+            pk = pknown(w1, w2)
+
+            # Coefficient of p_{w1,w2}
+            if neg1 and neg2:
+                pair_coeff = 1.0
+            elif neg1 or neg2:
+                pair_coeff = -1.0
+            else:
+                pair_coeff = 1.0
+
+            if pv is not None:
+                coeffs.append((pv, pair_coeff))
+            elif pk is not None:
+                const += pair_coeff * pk
+
+            # Terms involving p_w1
+            if neg1 and neg2:
+                # 1 - p_w1 - p_w2 + p_{w1,w2}: need -p_w1
+                c1, k1 = literal_marginal(w1, False)
+                for cv, cc in c1:
+                    coeffs.append((cv, -cc))
+                const -= k1
+            elif neg1 and not neg2:
+                # p_w2 - p_{w1,w2}: need nothing with w1 directly
+                pass
+            elif not neg1 and neg2:
+                # p_w1 - p_{w1,w2}: need p_w1
+                c1, k1 = literal_marginal(w1, False)
+                for cv, cc in c1:
+                    coeffs.append((cv, cc))
+                const += k1
+            # else: (not neg1, not neg2): just p_{w1,w2}
+
+            # Terms involving p_w2
+            if neg1 and neg2:
+                c2, k2 = literal_marginal(w2, False)
+                for cv, cc in c2:
+                    coeffs.append((cv, -cc))
+                const -= k2
+                const += 1.0  # the +1 term
+            elif neg1 and not neg2:
+                c2, k2 = literal_marginal(w2, False)
+                for cv, cc in c2:
+                    coeffs.append((cv, cc))
+                const += k2
+            elif not neg1 and neg2:
+                pass
+            # else: nothing
+
+            return coeffs, const
+
+        # 1. Output constraint: p_{output_wire}(b) = b
+        # (output can also be negated - handled by allowing output_neg)
+        add_eq([(gvar(output_wire), 1.0)], float(b))
+
+        # 2. Gate semantics (marginals) - each gate is AND/OR of two literals
         for g_idx in range(s):
             g = n + g_idx
             gt = gate_types[g_idx]
-            i1, i2 = connections[g_idx]
+            w1, w2 = connections[g_idx]
+            neg1, neg2 = neg_flags[g_idx]
 
             if gt == 'AND':
-                # p_g = p_{i1,i2}
+                # p_g = Pr[l1=1 AND l2=1] = literal_pair(w1,neg1,w2,neg2)
+                lp_coeffs, lp_const = literal_pair(w1, neg1, w2, neg2)
                 coeffs = [(gvar(g), 1.0)]
-                rhs = 0.0
-                pv = pvar(i1, i2)
-                pk = pknown(i1, i2)
-                if pv is not None:
-                    coeffs.append((pv, -1.0))
-                else:
-                    rhs = pk
+                rhs = lp_const
+                for cv, cc in lp_coeffs:
+                    coeffs.append((cv, -cc))
                 add_eq(coeffs, rhs)
 
             elif gt == 'OR':
-                # p_g = p_i1 + p_i2 - p_{i1,i2}
+                # p_g = Pr[l1=1] + Pr[l2=1] - Pr[l1=1 AND l2=1]
+                m1_coeffs, m1_const = literal_marginal(w1, neg1)
+                m2_coeffs, m2_const = literal_marginal(w2, neg2)
+                lp_coeffs, lp_const = literal_pair(w1, neg1, w2, neg2)
+
                 coeffs = [(gvar(g), 1.0)]
-                rhs = 0.0
-
-                for inp in [i1, i2]:
-                    v = gval(inp)
-                    if v is not None:
-                        rhs += v
-                    else:
-                        coeffs.append((gvar(inp), -1.0))
-
-                pv = pvar(i1, i2)
-                pk = pknown(i1, i2)
-                if pv is not None:
-                    coeffs.append((pv, 1.0))
-                elif pk is not None:
-                    rhs -= pk
-
+                rhs = m1_const + m2_const - lp_const
+                for cv, cc in m1_coeffs:
+                    coeffs.append((cv, -cc))
+                for cv, cc in m2_coeffs:
+                    coeffs.append((cv, -cc))
+                for cv, cc in lp_coeffs:
+                    coeffs.append((cv, cc))  # minus the minus
                 add_eq(coeffs, rhs)
 
-            elif gt == 'NOT':
-                # p_g = 1 - p_i1
-                coeffs = [(gvar(g), 1.0)]
-                v1 = gval(i1)
-                if v1 is not None:
-                    add_eq(coeffs, 1.0 - v1)
-                else:
-                    coeffs.append((gvar(i1), 1.0))
-                    add_eq(coeffs, 1.0)
-
-        # 3. Consistency: p_{g,g} = p_g
+        # 3. Consistency: p_{w,w} = p_w
         for i in range(W):
             pv = pvar(i, i)
             if pv is None:
@@ -263,10 +345,13 @@ def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2)
                 add_ub(coeffs, rhs)
 
         # 5. Cross-gate pairwise constraints
+        # For gate g = OP(l1, l2), and any wire w:
+        # p_{g,w} must be consistent with the gate semantics
         for g_idx in range(s):
             g = n + g_idx
             gt = gate_types[g_idx]
-            i1, i2 = connections[g_idx]
+            w1, w2 = connections[g_idx]
+            neg1, neg2 = neg_flags[g_idx]
 
             for w in range(W):
                 if w == g:
@@ -275,106 +360,98 @@ def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2)
                 if pv_gw is None:
                     continue
 
-                if gt == 'NOT':
-                    # p_{g,w} = p_w - p_{i1,w}
-                    coeffs = [(pv_gw, 1.0)]
-                    rhs = 0.0
-                    vw = gval(w)
-                    if vw is not None:
-                        rhs += vw
-                    else:
-                        coeffs.append((gvar(w), -1.0))
-
-                    if i1 == w:
-                        # p_{i1,w} = p_w
-                        if vw is not None:
-                            rhs -= vw
-                        else:
-                            coeffs.append((gvar(w), 1.0))
-                    else:
-                        pv_iw = pvar(i1, w)
-                        pk_iw = pknown(i1, w)
-                        if pv_iw is not None:
-                            coeffs.append((pv_iw, 1.0))
-                        elif pk_iw is not None:
-                            rhs -= pk_iw
-
-                    add_eq(coeffs, rhs)
-
-                elif gt == 'AND':
-                    # p_{g,w} <= p_{inp,w} for inp in {i1, i2}
-                    for inp in [i1, i2]:
-                        if inp == w:
-                            # p_{g,w} <= p_w (already in Frechet)
+                if gt == 'AND':
+                    # g = l1 AND l2
+                    # Pr[g=1, w=1] <= Pr[l1=1, w=1] and <= Pr[l2=1, w=1]
+                    for (wi, negi) in [(w1, neg1), (w2, neg2)]:
+                        if wi == w:
+                            # Pr[li=1, w=1]: if li = w, it's p_w; if li = ~w, it's 0
+                            if negi:
+                                # p_{g,w} <= 0
+                                add_ub([(pv_gw, 1.0)], 0.0)
+                            # else p_{g,w} <= p_w, already in Frechet
                             continue
+
+                        lp_c, lp_k = literal_pair(wi, negi, w, False)
+                        # p_{g,w} <= lp_c * vars + lp_k
                         coeffs = [(pv_gw, 1.0)]
-                        rhs = 0.0
-                        pv_iw = pvar(inp, w)
-                        pk_iw = pknown(inp, w)
-                        if pv_iw is not None:
-                            coeffs.append((pv_iw, -1.0))
-                        elif pk_iw is not None:
-                            rhs = pk_iw
+                        rhs = lp_k
+                        for cv, cc in lp_c:
+                            coeffs.append((cv, -cc))
                         add_ub(coeffs, rhs)
 
-                    # p_{g,w} >= p_{i1,w} + p_{i2,w} - p_w
+                    # p_{g,w} >= Pr[l1=1,w=1] + Pr[l2=1,w=1] - Pr[w=1]
                     coeffs = [(pv_gw, -1.0)]
                     rhs = 0.0
-                    for inp in [i1, i2]:
-                        if inp == w:
-                            vw = gval(w)
-                            if vw is not None:
-                                rhs -= vw
+                    for (wi, negi) in [(w1, neg1), (w2, neg2)]:
+                        if wi == w:
+                            if negi:
+                                pass  # Pr[~w=1, w=1] = 0
                             else:
-                                coeffs.append((gvar(w), 1.0))
+                                # Pr[w=1, w=1] = p_w
+                                vw = gval(w)
+                                if vw is not None:
+                                    rhs -= vw
+                                else:
+                                    coeffs.append((gvar(w), 1.0))
                         else:
-                            pv_iw = pvar(inp, w)
-                            pk_iw = pknown(inp, w)
-                            if pv_iw is not None:
-                                coeffs.append((pv_iw, 1.0))
-                            elif pk_iw is not None:
-                                rhs -= pk_iw
+                            lp_c, lp_k = literal_pair(wi, negi, w, False)
+                            rhs -= lp_k
+                            for cv, cc in lp_c:
+                                coeffs.append((cv, cc))
 
                     vw = gval(w)
                     if vw is not None:
                         rhs += vw
                     else:
                         coeffs.append((gvar(w), -1.0))
-
                     add_ub(coeffs, rhs)
 
                 elif gt == 'OR':
-                    # p_{g,w} >= p_{inp,w} for inp in {i1, i2}
-                    for inp in [i1, i2]:
-                        if inp == w:
+                    # g = l1 OR l2
+                    # Pr[g=1, w=1] >= Pr[li=1, w=1] for each input
+                    for (wi, negi) in [(w1, neg1), (w2, neg2)]:
+                        if wi == w:
+                            if negi:
+                                pass  # Pr[~w=1, w=1] = 0, so >= 0 trivially
+                            else:
+                                # p_{g,w} >= p_w: already handled? No. Let's add.
+                                # -p_{g,w} <= -p_w
+                                coeffs = [(pv_gw, -1.0)]
+                                rhs = 0.0
+                                vw = gval(w)
+                                if vw is not None:
+                                    rhs = -vw
+                                else:
+                                    coeffs.append((gvar(w), 1.0))
+                                add_ub(coeffs, rhs)
                             continue
+
+                        lp_c, lp_k = literal_pair(wi, negi, w, False)
                         coeffs = [(pv_gw, -1.0)]
-                        rhs = 0.0
-                        pv_iw = pvar(inp, w)
-                        pk_iw = pknown(inp, w)
-                        if pv_iw is not None:
-                            coeffs.append((pv_iw, 1.0))
-                        elif pk_iw is not None:
-                            rhs = -pk_iw
+                        rhs = -lp_k
+                        for cv, cc in lp_c:
+                            coeffs.append((cv, cc))
                         add_ub(coeffs, rhs)
 
-                    # p_{g,w} <= p_{i1,w} + p_{i2,w}
+                    # p_{g,w} <= Pr[l1=1,w=1] + Pr[l2=1,w=1]
                     coeffs = [(pv_gw, 1.0)]
                     rhs = 0.0
-                    for inp in [i1, i2]:
-                        if inp == w:
-                            vw = gval(w)
-                            if vw is not None:
-                                rhs += vw
+                    for (wi, negi) in [(w1, neg1), (w2, neg2)]:
+                        if wi == w:
+                            if negi:
+                                pass
                             else:
-                                coeffs.append((gvar(w), -1.0))
+                                vw = gval(w)
+                                if vw is not None:
+                                    rhs += vw
+                                else:
+                                    coeffs.append((gvar(w), -1.0))
                         else:
-                            pv_iw = pvar(inp, w)
-                            pk_iw = pknown(inp, w)
-                            if pv_iw is not None:
-                                coeffs.append((pv_iw, -1.0))
-                            elif pk_iw is not None:
-                                rhs += pk_iw
+                            lp_c, lp_k = literal_pair(wi, negi, w, False)
+                            rhs += lp_k
+                            for cv, cc in lp_c:
+                                coeffs.append((cv, -cc))
                     add_ub(coeffs, rhs)
 
         # Build sparse matrices and solve
@@ -400,31 +477,60 @@ def build_and_check_lp(n, s, gate_types, connections, input_probs, input_probs2)
     return True
 
 
-def systematic_check_all(n, s, input_probs, input_probs2, max_tries=5000):
+def sample_circuits(n, s, input_probs, input_probs2, max_tries=3000):
     """
-    Sample random circuit structures of size s for n inputs.
+    Sample random circuit structures of size s (AND/OR gates with free NOT).
     Returns True if ANY structure is LP-feasible.
     """
     import random as _rnd
     _rnd.seed(42)
-    gate_types_opts = ['AND', 'OR', 'NOT']
 
     count = 0
     for trial in range(max_tries):
-        type_combo = [_rnd.choice(gate_types_opts) for _ in range(s)]
-        conn_combo = []
+        gt_list = []
+        conn_list = []
+        neg_list = []
         for g in range(s):
+            gt = _rnd.choice(['AND', 'OR'])
             avail = list(range(n + g))
-            if type_combo[g] == 'NOT':
-                conn_combo.append((_rnd.choice(avail), 0))
-            else:
-                a = _rnd.choice(avail)
-                c = _rnd.choice(avail)
-                conn_combo.append((a, c))
+            w1 = _rnd.choice(avail)
+            w2 = _rnd.choice(avail)
+            n1 = _rnd.choice([False, True])
+            n2 = _rnd.choice([False, True])
+            gt_list.append(gt)
+            conn_list.append((w1, w2))
+            neg_list.append((n1, n2))
         count += 1
-        if build_and_check_lp(n, s, type_combo, conn_combo,
+        if build_and_check_lp(n, s, gt_list, conn_list, neg_list,
                                input_probs, input_probs2):
             return True, count
+
+    return False, count
+
+
+def enumerate_circuits(n, s, input_probs, input_probs2):
+    """
+    Enumerate ALL circuit structures of size s for n inputs.
+    Each gate: AND or OR, two inputs from available wires, each optionally negated.
+    Returns (feasible, count).
+    """
+    count = 0
+    for type_combo in iproduct(['AND', 'OR'], repeat=s):
+        conn_opts = []
+        neg_opts = []
+        for g in range(s):
+            avail = list(range(n + g))
+            # For commutative gates, (w1,w2) with w1<=w2 to avoid duplication
+            c_opts = [(a, c) for a in avail for c in range(a, n+g)]
+            conn_opts.append(c_opts)
+            neg_opts.append([(False,False),(False,True),(True,False),(True,True)])
+
+        for conn_combo in iproduct(*conn_opts):
+            for neg_combo in iproduct(*neg_opts):
+                count += 1
+                if build_and_check_lp(n, s, list(type_combo), list(conn_combo),
+                                       list(neg_combo), input_probs, input_probs2):
+                    return True, count
 
     return False, count
 
@@ -433,10 +539,10 @@ def systematic_check_all(n, s, input_probs, input_probs2, max_tries=5000):
 # MAIN
 # ============================================================
 if __name__ == '__main__':
-    import random
     import time
 
     print("HOLOGRAPHIC LP v2: Level-2 Sherali-Adams Circuit Lower Bounds")
+    print("  (NOT gates are FREE, matching circuit complexity convention)")
     print("=" * 65)
 
     sizes3 = compute_sizes(3)
@@ -447,11 +553,10 @@ if __name__ == '__main__':
     print(f"\nn=3: {len(hardest3)} hardest functions, actual circuit size = {max_sz}")
     print()
 
-    # For n=3 hardest, systematically prove s=1,2,3 are infeasible
-    # Then verify s=4 is feasible via random sampling (more trials)
+    # Test hardest functions
     print("Testing n=3 hardest functions:")
-    print(f"  {'tt':>12} {'actual':>8}  s=1   s=2   s=3  LP_min  match?")
-    print(f"  {'-'*60}")
+    print(f"  {'tt':>12} {'actual':>8}   results by size       LP_min  match?")
+    print(f"  {'-'*65}")
 
     all_tight = True
     for tt in hardest3:
@@ -463,24 +568,28 @@ if __name__ == '__main__':
         actual = sizes3[tt]
 
         results = []
-        lp_min = actual  # default
-        for s_test in range(1, 4):  # test s=1,2,3
-            feas, cnt = systematic_check_all(n, s_test, ip, ip2, max_tries=2000)
-            results.append("INF" if not feas else "feas")
-            if feas and lp_min == actual:
+        lp_min = None
+        t0 = time.time()
+        for s_test in range(1, actual + 1):
+            if s_test <= 3:
+                # Enumerate all for small sizes
+                feas, cnt = enumerate_circuits(n, s_test, ip, ip2)
+            else:
+                feas, cnt = sample_circuits(n, s_test, ip, ip2, max_tries=5000)
+            results.append(f"s{s_test}:{'F' if feas else 'I'}")
+            if feas and lp_min is None:
                 lp_min = s_test
+        elapsed = time.time() - t0
 
-        # For s=4, try random structures
-        if lp_min == actual:
-            feas4, cnt4 = systematic_check_all(n, 4, ip, ip2, max_tries=5000)
-            if feas4:
-                lp_min = 4
+        if lp_min is None:
+            lp_min = actual + 1  # LP too tight
 
         match_str = "YES" if lp_min == actual else f"gap={actual - lp_min}"
         if lp_min != actual:
             all_tight = False
-        r = "  ".join(f"{r:>4}" for r in results)
-        print(f"  {tt_str:>12} {actual:>8}  {r}  {lp_min:>5}  {match_str:>6}")
+        r = " ".join(results)
+        print(f"  {tt_str:>12} {actual:>8}   {r:<24} {lp_min:>5}  {match_str:>6}  ({elapsed:.1f}s)")
+        sys.stdout.flush()
 
     print()
     print("  v1 (Frechet only):     LP_min = 2 for actual-4 functions (gap = 2)")
@@ -489,16 +598,17 @@ if __name__ == '__main__':
         print()
         print("  >>> GAP CLOSED! SA2 constraints give TIGHT bounds for n=3! <<<")
     else:
-        print("  v2 (Sherali-Adams 2):  Some gap remains")
+        print("  v2 still has some gaps.")
 
-    # Sanity: smaller functions should also be correct
+    # Sanity check on smaller functions
     print()
     print("Sanity check (smaller functions):")
     print(f"  {'tt':>12} {'actual':>8} {'LP_min':>8} {'ok?':>8}")
     print(f"  {'-'*44}")
+
     for target in [1, 2]:
         fns = sorted([t for t, sz in sizes3.items() if sz == target])
-        for tt in fns[:2]:
+        for tt in fns[:3]:
             result = truth_table_properties(tt, n)
             if result is None:
                 continue
@@ -507,25 +617,26 @@ if __name__ == '__main__':
             actual = sizes3[tt]
             lp_min = None
             for s_test in range(1, actual + 1):
-                feas, cnt = systematic_check_all(n, s_test, ip, ip2, max_tries=5000)
+                feas, cnt = sample_circuits(n, s_test, ip, ip2, max_tries=3000)
                 if feas:
                     lp_min = s_test
                     break
             if lp_min is None:
-                lp_min = actual + 1  # problem
+                lp_min = actual + 1
             ok = "YES" if lp_min == actual else f"gap={actual-lp_min}"
             print(f"  {tt_str:>12} {actual:>8} {lp_min:>8} {ok:>8}")
+    sys.stdout.flush()
 
-    # n=4 test
+    # n=4
     print()
     print("=" * 65)
-    print("n=4 test (random sampling):")
+    print("n=4 (random sampling):")
     sizes4 = compute_sizes(4)
     n4 = 4
     max4 = max(sizes4.values())
     hardest4 = sorted([t for t, sz in sizes4.items() if sz == max4])
     print(f"{len(hardest4)} functions with actual size {max4}")
-    print(f"  {'tt':>20} {'actual':>8} {'LP_min':>8}")
+    print(f"  {'tt':>20} {'actual':>8} {'LP_lb':>8}")
     print(f"  {'-'*40}")
 
     for tt in hardest4[:3]:
@@ -536,11 +647,13 @@ if __name__ == '__main__':
         tt_str = bin(tt)[2:].zfill(2**n4)
         actual = sizes4[tt]
 
-        lp_min = actual  # default if nothing found feasible below actual
+        lp_lb = 1
         for s_test in range(1, actual):
-            feas, cnt = systematic_check_all(n4, s_test, ip, ip2, max_tries=2000)
+            feas, cnt = sample_circuits(n4, s_test, ip, ip2, max_tries=1000)
             if feas:
-                lp_min = s_test
+                lp_lb = s_test
                 break
+            lp_lb = s_test + 1
 
-        print(f"  {tt_str:>20} {actual:>8} {'>=' + str(lp_min):>8}")
+        print(f"  {tt_str:>20} {actual:>8} {'>=' + str(lp_lb):>8}")
+        sys.stdout.flush()
