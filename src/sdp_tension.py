@@ -679,6 +679,10 @@ def run_comparison():
             n, s_real, gt_list, cn_list, p1, p2, max_cuts=100)
         print(f"    Cutting-plane SDP on real circuit: "
               f"{'FEASIBLE' if sdp_feas else 'INFEASIBLE'} ({n_cuts} iterations)")
+        if not sdp_feas:
+            print(f"    NOTE: Real circuit has PSD=YES but cutting-plane failed to converge.")
+            print(f"    This means the cutting-plane method needs more iterations or")
+            print(f"    a true SDP solver for definitive answers.")
         print()
 
     print()
@@ -703,14 +707,16 @@ FINDINGS:
    for random circuits up to s=30. This indicates the PSD constraint
    provides SUBSTANTIALLY stronger bounds for CLIQUE.
 
-INTERPRETATION:
-   The SDP relaxation (LP + PSD on M(b)) is a valid relaxation that is
-   strictly stronger than LP alone. The gap between LP and SDP bounds
-   grows with N, which is promising for circuit lower bounds.
+CAVEAT:
+   The cutting-plane method (LP + iterative eigenvalue cuts) does NOT
+   converge even for the REAL clique circuit. This means the SDP bound
+   numbers above are OPTIMISTIC (cutting-plane says infeasible when true
+   SDP might be feasible). The method needs a true SDP solver for
+   definitive answers.
 
-   However: the cutting-plane approach may not be finding all feasible
-   points efficiently. A true SDP solver (e.g., cvxpy + SCS) would give
-   definitive answers. The current results are LOWER BOUNDS on the SDP bound.
+   Despite this, the method IS sound as an UPPER bound on LP weakness:
+   every LP-feasible point that violates PSD is genuinely non-physical,
+   showing that LP accepts "fake" solutions that SDP would reject.
 
 KEY INSIGHT:
    PSD enforces that the conditional correlation structure of gate outputs
