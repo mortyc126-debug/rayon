@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+tension/bigfunnel_32bit
+tension/scaling_wall
